@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:18-bookworm
+    container_name: tri-read-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tri_read}
+      POSTGRES_USER: ${POSTGRES_USER:-tri_read_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tri_read_dev}
+      TZ: Asia/Seoul
+    volumes:
+      - tri_read_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  tri_read_postgres_data:
