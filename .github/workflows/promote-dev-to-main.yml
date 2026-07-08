@@ -1,0 +1,74 @@
+name: Promote dev to main
+
+on:
+  # GitHub cron is UTC. 00:00 UTC is 09:00 in Asia/Seoul.
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether dev is ahead of main
+        id: changes
+        shell: bash
+        run: |
+          git fetch origin main dev
+          AHEAD_COUNT="$(git rev-list --count origin/main..origin/dev)"
+
+          if [ "$AHEAD_COUNT" = "0" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "dev has no commits to promote."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "dev is ahead of main by $AHEAD_COUNT commit(s)."
+          fi
+
+      - name: Create or reuse promotion pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          PR_NUMBER="$(gh pr list \
+            --base main \
+            --head dev \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [ -z "$PR_NUMBER" ]; then
+            PR_URL="$(gh pr create \
+              --base main \
+              --head dev \
+              --title "chore: promote dev to main" \
+              --body "Scheduled TRI:READ backend promotion from dev to main.")"
+            PR_NUMBER="${PR_URL##*/}"
+            echo "Created promotion PR #$PR_NUMBER"
+          else
+            echo "Promotion PR #$PR_NUMBER already exists."
+          fi
+
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge when repository policy allows it
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr merge "${{ steps.pr.outputs.number }}" --auto --merge \
+            || echo "Auto-merge is unavailable. The PR will wait for repository policy requirements."
+
