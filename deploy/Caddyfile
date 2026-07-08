@@ -1,0 +1,14 @@
+{$SITE_DOMAIN:localhost} {
+    encode zstd gzip
+
+    handle /api/* {
+        reverse_proxy app:8080
+    }
+
+    handle {
+        root * /srv/frontend
+        try_files {path} {path}/ /index.html
+        file_server
+    }
+}
+
