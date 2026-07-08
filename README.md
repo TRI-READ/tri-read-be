@@ -43,4 +43,3 @@ docker compose up --build
 ```
 
 Only Caddy should expose ports 80 and 443. Spring Boot and PostgreSQL stay inside the Docker network.
-
