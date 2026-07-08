@@ -1,3 +1,5 @@
+name: tri-read-dev
+
 services:
   db:
     image: postgres:18-bookworm
@@ -11,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tri_read_dev}
       TZ: Asia/Seoul
     volumes:
-      - tri_read_postgres_data:/var/lib/postgresql/data
+      - tri_read_postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
