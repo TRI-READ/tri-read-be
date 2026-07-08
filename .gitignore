@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+src/main/resources/application-local.yml
+src/main/resources/application-secret.yml
 
 # Gradle / Java
 .gradle/
@@ -20,4 +22,3 @@ Thumbs.db
 # Deployment artifacts
 deploy/frontend/out/*
 !deploy/frontend/out/.gitkeep
-
