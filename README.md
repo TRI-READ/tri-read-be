@@ -48,6 +48,16 @@ gradle test
 gradle bootRun
 ```
 
+Load the handwritten development quiz for the current date after PostgreSQL is
+running. This script is separate from Flyway and skips insertion when a published
+quiz already exists for today.
+
+```powershell
+docker cp scripts/seed-dev-quiz.sql tri-read-postgres:/tmp/seed-dev-quiz.sql
+docker exec tri-read-postgres psql -v ON_ERROR_STOP=1 `
+    -U tri_read_app -d tri_read -f /tmp/seed-dev-quiz.sql
+```
+
 Override the connection with environment variables when needed:
 
 ```powershell
@@ -70,6 +80,20 @@ GET  /api/auth/me
 
 Signup and login create a server-side session. PINs are stored only as BCrypt
 hashes.
+
+## Daily Quiz API
+
+Both endpoints require the authenticated session and the submission endpoint
+also requires the CSRF header.
+
+```text
+GET  /api/quizzes/today
+POST /api/quizzes/{quizSetId}/attempts
+```
+
+The submission must contain exactly one answer for each of the 9 questions.
+Scoring, attempt persistence, and pending wrong-answer reviews are committed in
+one transaction.
 
 ## Deployment Draft
 
