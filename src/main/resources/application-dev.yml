@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/tri_read}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:15432/tri_read}
     username: ${POSTGRES_USER:tri_read_app}
     password: ${POSTGRES_PASSWORD:tri_read_dev}
     driver-class-name: org.postgresql.Driver

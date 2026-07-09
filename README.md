@@ -35,7 +35,7 @@ docker compose -f compose.db.yaml up -d
 The default development connection is:
 
 ```text
-url=jdbc:postgresql://localhost:5432/tri_read
+url=jdbc:postgresql://localhost:15432/tri_read
 username=tri_read_app
 password=tri_read_dev
 ```
@@ -51,10 +51,25 @@ gradle bootRun
 Override the connection with environment variables when needed:
 
 ```powershell
-$env:DATABASE_URL="jdbc:postgresql://localhost:5432/tri_read"
+$env:DATABASE_URL="jdbc:postgresql://localhost:15432/tri_read"
 $env:POSTGRES_USER="tri_read_app"
 $env:POSTGRES_PASSWORD="tri_read_dev"
 ```
+
+## Authentication API
+
+The browser first requests `GET /api/csrf`, then sends the returned header and
+cookie with state-changing requests.
+
+```text
+POST /api/auth/signup
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
+```
+
+Signup and login create a server-side session. PINs are stored only as BCrypt
+hashes.
 
 ## Deployment Draft
 
