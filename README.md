@@ -25,14 +25,36 @@ Spring Boot REST API for TRI:READ, a weekday reading quiz service.
 
 ## Run Locally
 
-Gradle is required locally.
+Gradle and PostgreSQL are required locally. The easiest local setup is to run only
+PostgreSQL with Docker Compose and run the Spring Boot app from Gradle or an IDE.
+
+```powershell
+docker compose -f compose.db.yaml up -d
+```
+
+The default development connection is:
+
+```text
+url=jdbc:postgresql://localhost:5432/tri_read
+username=tri_read_app
+password=tri_read_dev
+```
+
+Flyway runs automatically when the app starts and creates the core schema from
+`src/main/resources/db/migration`.
 
 ```powershell
 gradle test
 gradle bootRun
 ```
 
-The local app expects PostgreSQL at `localhost:5432` by default. Override with environment variables or use the deployment compose file after Docker is available.
+Override the connection with environment variables when needed:
+
+```powershell
+$env:DATABASE_URL="jdbc:postgresql://localhost:5432/tri_read"
+$env:POSTGRES_USER="tri_read_app"
+$env:POSTGRES_PASSWORD="tri_read_dev"
+```
 
 ## Deployment Draft
 
