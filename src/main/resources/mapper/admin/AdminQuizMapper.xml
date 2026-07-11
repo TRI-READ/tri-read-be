@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.admin.AdminQuizMapper">
+    <select id="findQuizzes" resultType="com.triread.api.admin.AdminQuizData$QuizRow">
+        SELECT id AS quiz_set_id, challenge_date, status, created_at, published_at
+        FROM quiz_sets ORDER BY challenge_date DESC NULLS LAST, id DESC
+    </select>
+    <select id="findQuiz" resultType="com.triread.api.admin.AdminQuizData$QuizRow">
+        SELECT id AS quiz_set_id, challenge_date, status, created_at, published_at
+        FROM quiz_sets WHERE id = #{quizSetId}
+    </select>
+    <select id="countPublishedByDate" resultType="int">
+        SELECT COUNT(*) FROM quiz_sets WHERE challenge_date = #{challengeDate} AND status = 'PUBLISHED'
+    </select>
+    <insert id="insertQuiz" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO quiz_sets (challenge_date, status) VALUES (#{challengeDate}, 'DRAFT')
+    </insert>
+    <insert id="insertPassage" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO passages (quiz_set_id, position, title, content, topic)
+        VALUES (#{quizSetId}, #{position}, #{title}, #{content}, #{topic})
+    </insert>
+    <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO questions (passage_id, position, content)
+        VALUES (#{passageId}, #{position}, #{content})
+    </insert>
+    <insert id="insertOption" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO question_options (question_id, position, content)
+        VALUES (#{questionId}, #{position}, #{content})
+    </insert>
+    <insert id="insertKey">
+        INSERT INTO question_keys (question_id, correct_option_id, explanation, evidence)
+        VALUES (#{questionId}, #{correctOptionId}, #{explanation}, #{evidence})
+    </insert>
+    <update id="publish">
+        UPDATE quiz_sets SET status = 'PUBLISHED', published_at = #{publishedAt}
+        WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
+    </update>
+</mapper>

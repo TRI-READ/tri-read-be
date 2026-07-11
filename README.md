@@ -145,6 +145,19 @@ need a separate history table. The required orbit has five weekday slots, and a
 weekend attempt fills the earliest empty slot in that week. A perfect attempt is
 100% lit immediately; otherwise brightness is the recovered wrong-answer ratio.
 
+## Admin Quiz API
+
+Admin accounts can create a complete quiz as a draft, inspect it, and publish it.
+The server enforces exactly 3 passages, 3 questions per passage, and 4 options
+per question. Only one published quiz is allowed for a challenge date.
+
+```text
+GET  /api/admin/quizzes
+GET  /api/admin/quizzes/{quizSetId}
+POST /api/admin/quizzes
+POST /api/admin/quizzes/{quizSetId}/publish
+```
+
 ## Deployment Draft
 
 ```powershell
