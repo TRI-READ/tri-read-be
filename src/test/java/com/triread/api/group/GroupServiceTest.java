@@ -177,7 +177,7 @@ class GroupServiceTest {
         LocalDate monday = LocalDate.of(2026, 7, 6);
         LocalDate friday = LocalDate.of(2026, 7, 10);
         when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
-        when(groupMapper.findWeeklyActivity(GROUP_ID, monday, friday,
+        when(groupMapper.findWeeklyActivity(GROUP_ID, monday, friday.plusDays(2),
                 LocalDate.of(2026, 7, 11))).thenReturn(List.of(
                 activityRow(OWNER_ID, "Owner", 2, 16, 1, 2, 1, true, 40),
                 activityRow(MEMBER_ID, "Member", 2, 16, 0, 2, 1, false, 40),

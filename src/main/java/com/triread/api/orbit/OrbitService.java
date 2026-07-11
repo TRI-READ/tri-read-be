@@ -18,6 +18,8 @@ public interface OrbitService {
 
     record OrbitDay(
             LocalDate date,
+            LocalDate sourceDate,
+            boolean weekendMakeUp,
             String status,
             int brightness,
             Integer score,

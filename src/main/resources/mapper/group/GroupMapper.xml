@@ -94,25 +94,47 @@
     </select>
 
     <select id="findWeeklyActivity" resultType="com.triread.api.group.GroupData$ActivityRow">
-        WITH attempt_stats AS (
-            SELECT qa.user_id,
-                   COUNT(*) AS completed_days,
-                   COALESCE(SUM(qa.score), 0) AS total_correct,
-                   COUNT(*) FILTER (WHERE qa.score = 9) AS perfect_count,
-                   BOOL_OR(qs.challenge_date = #{today}) AS today_completed,
-                   COUNT(*) FILTER (
-                       WHERE qa.score = 9
-                          OR NOT EXISTS (
-                              SELECT 1
-                              FROM answer_reviews pending_review
-                              WHERE pending_review.source_attempt_id = qa.id
-                                AND pending_review.review_status != 'RECOVERED'
-                          )
-                   ) AS fully_lit_count
+        WITH ranked_attempts AS (
+            SELECT qa.id AS attempt_id,
+                   qa.user_id,
+                   qa.score,
+                   qs.challenge_date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY qa.user_id
+                       ORDER BY CASE
+                           WHEN EXTRACT(ISODOW FROM qs.challenge_date) &lt;= 5 THEN 0
+                           ELSE 1
+                       END,
+                       qs.challenge_date
+                   ) AS credit_order
             FROM quiz_attempts qa
             JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
             WHERE qs.challenge_date BETWEEN #{startDate} AND #{endDate}
-            GROUP BY qa.user_id
+        ), credited_attempts AS (
+            SELECT *
+            FROM ranked_attempts
+            WHERE credit_order &lt;= 5
+        ), attempt_stats AS (
+            SELECT credited.user_id,
+                   COUNT(*) AS completed_days,
+                   COALESCE(SUM(credited.score), 0) AS total_correct,
+                   COUNT(*) FILTER (WHERE credited.score = 9) AS perfect_count,
+                   COUNT(*) FILTER (
+                       WHERE credited.score = 9
+                          OR NOT EXISTS (
+                              SELECT 1
+                              FROM answer_reviews pending_review
+                              WHERE pending_review.source_attempt_id = credited.attempt_id
+                                AND pending_review.review_status != 'RECOVERED'
+                          )
+                   ) AS fully_lit_count
+            FROM credited_attempts credited
+            GROUP BY credited.user_id
+        ), today_stats AS (
+            SELECT user_id, TRUE AS today_completed
+            FROM ranked_attempts
+            WHERE challenge_date = #{today}
+            GROUP BY user_id
         ), recovered_stats AS (
             SELECT ar.user_id,
                    COUNT(*) AS recovered_count
@@ -128,13 +150,14 @@
                COALESCE(a.perfect_count, 0) AS perfect_count,
                COALESCE(r.recovered_count, 0) AS recovered_count,
                COALESCE(a.fully_lit_count, 0) AS fully_lit_count,
-               COALESCE(a.today_completed, FALSE) AS today_completed,
+               COALESCE(t.today_completed, FALSE) AS today_completed,
                COALESCE(a.completed_days, 0) * 10
                    + COALESCE(a.total_correct, 0)
                    + COALESCE(r.recovered_count, 0) * 2 AS activity_score
         FROM group_members gm
         JOIN app_users u ON u.id = gm.user_id
         LEFT JOIN attempt_stats a ON a.user_id = gm.user_id
+        LEFT JOIN today_stats t ON t.user_id = gm.user_id
         LEFT JOIN recovered_stats r ON r.user_id = gm.user_id
         WHERE gm.group_id = #{groupId}
           AND u.enabled = TRUE

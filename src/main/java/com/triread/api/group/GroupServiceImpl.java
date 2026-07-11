@@ -107,7 +107,7 @@ public class GroupServiceImpl implements GroupService {
         LocalDate startDate = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate endDate = startDate.plusDays(4);
         List<GroupData.ActivityRow> rows = groupMapper.findWeeklyActivity(
-                groupId, startDate, endDate, today
+                groupId, startDate, endDate.plusDays(2), today
         );
         List<MemberActivity> ranking = new ArrayList<>();
         int rank = 0;

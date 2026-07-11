@@ -115,6 +115,8 @@ disables the group's previous active codes.
 
 Weekly group activity is calculated without a ranking table. The activity score
 is `completed quizzes * 10 + correct answers + recovered reviews * 2`.
+Weekend attempts fill the earliest missing weekday in the same week. They do
+not create extra required days after all five weekdays have been completed.
 
 ## Answer Review API
 
@@ -139,8 +141,9 @@ GET /api/orbit?period=MONTH&anchor=2026-07-08
 ```
 
 Orbit history is derived from quiz attempts and answer reviews, so it does not
-need a separate history table. Weekends are excluded. A perfect attempt is 100%
-lit immediately; otherwise brightness is the recovered wrong-answer ratio.
+need a separate history table. The required orbit has five weekday slots, and a
+weekend attempt fills the earliest empty slot in that week. A perfect attempt is
+100% lit immediately; otherwise brightness is the recovered wrong-answer ratio.
 
 ## Deployment Draft
 
