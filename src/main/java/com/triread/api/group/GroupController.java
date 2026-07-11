@@ -55,6 +55,14 @@ public class GroupController {
         return groupService.getGroup(groupId, principal.userId());
     }
 
+    @GetMapping("/{groupId}/activity")
+    public GroupService.GroupActivity activity(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Positive @PathVariable long groupId
+    ) {
+        return groupService.getWeeklyActivity(groupId, principal.userId());
+    }
+
     @PostMapping("/join")
     public ResponseEntity<GroupService.GroupDetail> join(
             @AuthenticationPrincipal AuthPrincipal principal,

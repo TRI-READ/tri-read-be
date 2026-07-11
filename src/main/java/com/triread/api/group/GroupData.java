@@ -59,6 +59,20 @@ public final class GroupData {
     ) {
     }
 
+    public record ActivityRow(
+            long userId,
+            String displayName,
+            String role,
+            int completedDays,
+            int totalCorrect,
+            int perfectCount,
+            int recoveredCount,
+            int fullyLitCount,
+            boolean todayCompleted,
+            int activityScore
+    ) {
+    }
+
     public record InviteRow(
             long inviteId,
             long groupId,

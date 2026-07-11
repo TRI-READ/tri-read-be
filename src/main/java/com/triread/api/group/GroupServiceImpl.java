@@ -3,6 +3,10 @@ package com.triread.api.group;
 import com.triread.api.common.ApiException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -93,6 +97,34 @@ public class GroupServiceImpl implements GroupService {
     public InviteCodeResponse renewInvite(long groupId, long userId) {
         requireOwnerGroup(groupId, userId);
         return new InviteCodeResponse(createInvite(groupId, userId, true));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GroupActivity getWeeklyActivity(long groupId, long userId) {
+        GroupData.GroupRow group = requireMemberGroup(groupId, userId);
+        LocalDate today = LocalDate.now(clock);
+        LocalDate startDate = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate endDate = startDate.plusDays(4);
+        List<GroupData.ActivityRow> rows = groupMapper.findWeeklyActivity(
+                groupId, startDate, endDate, today
+        );
+        List<MemberActivity> ranking = new ArrayList<>();
+        int rank = 0;
+        int previousScore = Integer.MIN_VALUE;
+        for (int index = 0; index < rows.size(); index++) {
+            GroupData.ActivityRow row = rows.get(index);
+            if (row.activityScore() != previousScore) {
+                rank = index + 1;
+                previousScore = row.activityScore();
+            }
+            ranking.add(MemberActivity.from(rank, row));
+        }
+        int todayCompletedCount = (int) rows.stream()
+                .filter(GroupData.ActivityRow::todayCompleted)
+                .count();
+        return new GroupActivity(startDate, endDate, group.memberCount(),
+                todayCompletedCount, ranking);
     }
 
     private String createInvite(long groupId, long userId, boolean rotateExisting) {

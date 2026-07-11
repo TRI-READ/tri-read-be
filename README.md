@@ -106,11 +106,15 @@ GET  /api/groups/my
 GET  /api/groups/{groupId}
 POST /api/groups/join
 POST /api/groups/{groupId}/invites
+GET  /api/groups/{groupId}/activity
 ```
 
 Creating a group also creates its owner membership and an initial invite code.
 Only the invite-code hash is stored. Renewing an invite is owner-only and
 disables the group's previous active codes.
+
+Weekly group activity is calculated without a ranking table. The activity score
+is `completed quizzes * 10 + correct answers + recovered reviews * 2`.
 
 ## Answer Review API
 

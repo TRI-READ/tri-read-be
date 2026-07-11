@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.triread.api.common.ApiException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -171,6 +172,28 @@ class GroupServiceTest {
         verify(groupMapper, never()).disableGroupInvites(GROUP_ID);
     }
 
+    @Test
+    void weeklyActivityRanksMembersAndKeepsTies() {
+        LocalDate monday = LocalDate.of(2026, 7, 6);
+        LocalDate friday = LocalDate.of(2026, 7, 10);
+        when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
+        when(groupMapper.findWeeklyActivity(GROUP_ID, monday, friday,
+                LocalDate.of(2026, 7, 11))).thenReturn(List.of(
+                activityRow(OWNER_ID, "Owner", 2, 16, 1, 2, 1, true, 40),
+                activityRow(MEMBER_ID, "Member", 2, 16, 0, 2, 1, false, 40),
+                activityRow(9L, "New Reader", 1, 7, 0, 0, 0, false, 17)
+        ));
+
+        GroupService.GroupActivity result = groupService.getWeeklyActivity(GROUP_ID, OWNER_ID);
+
+        assertThat(result.startDate()).isEqualTo(monday);
+        assertThat(result.endDate()).isEqualTo(friday);
+        assertThat(result.todayCompletedCount()).isEqualTo(1);
+        assertThat(result.ranking()).extracting(GroupService.MemberActivity::rank)
+                .containsExactly(1, 1, 3);
+        assertThat(result.ranking().getFirst().averageScore()).isEqualTo(8);
+    }
+
     private void givenGeneratedInviteCode() {
         when(inviteCodeService.generateCode()).thenReturn("ABCDE-FGHIJ");
         when(inviteCodeService.normalize("ABCDE-FGHIJ")).thenReturn("ABCDEFGHIJ");
@@ -206,5 +229,21 @@ class GroupServiceTest {
 
     private GroupData.MemberRow ownerMemberRow() {
         return new GroupData.MemberRow(OWNER_ID, "Owner", "OWNER", NOW);
+    }
+
+    private GroupData.ActivityRow activityRow(
+            long userId,
+            String displayName,
+            int completedDays,
+            int totalCorrect,
+            int perfectCount,
+            int recoveredCount,
+            int fullyLitCount,
+            boolean todayCompleted,
+            int activityScore
+    ) {
+        return new GroupData.ActivityRow(userId, displayName, "MEMBER", completedDays,
+                totalCorrect, perfectCount, recoveredCount, fullyLitCount,
+                todayCompleted, activityScore);
     }
 }
