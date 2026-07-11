@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.review.AnswerReviewMapper">
+
+    <sql id="reviewColumns">
+        ar.id AS review_id,
+        ar.question_id,
+        ar.review_status,
+        ar.retry_count,
+        qs.challenge_date,
+        p.title AS passage_title,
+        p.topic AS passage_topic,
+        q.position AS question_position,
+        q.content AS question_content,
+        selected_option.id AS selected_option_id,
+        selected_option.position AS selected_option_position,
+        selected_option.content AS selected_option_content,
+        correct_option.id AS correct_option_id,
+        correct_option.position AS correct_option_position,
+        correct_option.content AS correct_option_content,
+        qk.explanation,
+        qk.evidence,
+        ar.created_at,
+        ar.last_reviewed_at,
+        ar.recovered_at
+    </sql>
+
+    <sql id="reviewJoins">
+        FROM answer_reviews ar
+        JOIN questions q ON q.id = ar.question_id
+        JOIN passages p ON p.id = q.passage_id
+        JOIN quiz_sets qs ON qs.id = p.quiz_set_id
+        JOIN attempt_answers aa
+          ON aa.attempt_id = ar.source_attempt_id
+         AND aa.question_id = ar.question_id
+        JOIN question_options selected_option
+          ON selected_option.id = aa.selected_option_id
+        JOIN question_keys qk ON qk.question_id = ar.question_id
+        JOIN question_options correct_option
+          ON correct_option.id = qk.correct_option_id
+    </sql>
+
+    <select id="findSummary" resultType="com.triread.api.review.AnswerReviewData$ReviewSummaryRow">
+        SELECT COUNT(*) AS total_count,
+               COUNT(*) FILTER (
+                   WHERE review_status IN ('PENDING', 'REVIEWED')
+               ) AS open_count,
+               COUNT(*) FILTER (
+                   WHERE review_status = 'RECOVERED'
+               ) AS recovered_count
+        FROM answer_reviews
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="findReviews" resultType="com.triread.api.review.AnswerReviewData$ReviewRow">
+        SELECT <include refid="reviewColumns" />
+        <include refid="reviewJoins" />
+        WHERE ar.user_id = #{userId}
+        <choose>
+            <when test="filter == 'OPEN'">
+                AND ar.review_status IN ('PENDING', 'REVIEWED')
+            </when>
+            <when test="filter == 'RECOVERED'">
+                AND ar.review_status = 'RECOVERED'
+            </when>
+        </choose>
+        ORDER BY CASE ar.review_status WHEN 'RECOVERED' THEN 1 ELSE 0 END,
+                 qs.challenge_date DESC,
+                 ar.id DESC
+    </select>
+
+    <select id="findReview" resultType="com.triread.api.review.AnswerReviewData$ReviewRow">
+        SELECT <include refid="reviewColumns" />
+        <include refid="reviewJoins" />
+        WHERE ar.user_id = #{userId}
+          AND ar.id = #{reviewId}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE answer_reviews
+        SET review_status = #{status},
+            retry_count = CASE
+                WHEN #{status} = 'RECOVERED' AND review_status != 'RECOVERED'
+                    THEN retry_count + 1
+                ELSE retry_count
+            END,
+            last_reviewed_at = CASE
+                WHEN #{status} = 'RECOVERED'
+                    THEN CAST(#{reviewedAt} AS TIMESTAMPTZ)
+                ELSE last_reviewed_at
+            END,
+            recovered_at = CASE
+                WHEN #{status} = 'RECOVERED'
+                    THEN CAST(#{reviewedAt} AS TIMESTAMPTZ)
+                ELSE CAST(NULL AS TIMESTAMPTZ)
+            END,
+            updated_at = CAST(#{reviewedAt} AS TIMESTAMPTZ)
+        WHERE id = #{reviewId}
+          AND user_id = #{userId}
+    </update>
+
+</mapper>

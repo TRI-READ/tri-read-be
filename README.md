@@ -29,7 +29,7 @@ Gradle and PostgreSQL are required locally. The easiest local setup is to run on
 PostgreSQL with Docker Compose and run the Spring Boot app from Gradle or an IDE.
 
 ```powershell
-docker compose -f compose.db.yaml up -d
+docker compose -p tri-read-dev -f compose.db.yaml up -d
 ```
 
 The default development connection is:
@@ -44,8 +44,8 @@ Flyway runs automatically when the app starts and creates the core schema from
 `src/main/resources/db/migration`.
 
 ```powershell
-gradle test
-gradle bootRun
+.\gradlew.bat test
+.\gradlew.bat bootRun
 ```
 
 Load the handwritten development quiz for the current date after PostgreSQL is
@@ -94,6 +94,38 @@ POST /api/quizzes/{quizSetId}/attempts
 The submission must contain exactly one answer for each of the 9 questions.
 Scoring, attempt persistence, and pending wrong-answer reviews are committed in
 one transaction.
+
+## Study Group API
+
+All endpoints require the authenticated session. State-changing endpoints also
+require the CSRF header.
+
+```text
+POST /api/groups
+GET  /api/groups/my
+GET  /api/groups/{groupId}
+POST /api/groups/join
+POST /api/groups/{groupId}/invites
+```
+
+Creating a group also creates its owner membership and an initial invite code.
+Only the invite-code hash is stored. Renewing an invite is owner-only and
+disables the group's previous active codes.
+
+## Answer Review API
+
+Review list filters are `OPEN`, `RECOVERED`, and `ALL`. Updating a review to
+`RECOVERED` records the review time and increases its retry count.
+
+```text
+GET   /api/reviews?status=OPEN
+GET   /api/reviews/{reviewId}
+PATCH /api/reviews/{reviewId}
+```
+
+A perfect 9/9 attempt has no answer reviews and its daily orbit is immediately
+fully lit. Otherwise, the daily orbit becomes fully lit when all wrong answers
+from that attempt are recovered.
 
 ## Deployment Draft
 
