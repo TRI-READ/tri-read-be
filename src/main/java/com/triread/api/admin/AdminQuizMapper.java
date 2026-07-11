@@ -20,4 +20,10 @@ public interface AdminQuizMapper {
                   @Param("explanation") String explanation,
                   @Param("evidence") String evidence);
     int publish(@Param("quizSetId") long quizSetId, @Param("publishedAt") Instant publishedAt);
+    int updateDraftDate(@Param("quizSetId") long quizSetId, @Param("challengeDate") LocalDate challengeDate);
+    int deleteKeys(long quizSetId);
+    int deleteOptions(long quizSetId);
+    int deleteQuestions(long quizSetId);
+    int deletePassages(long quizSetId);
+    int deleteDraft(long quizSetId);
 }

@@ -60,4 +60,19 @@ class AdminQuizServiceTest {
         verify(adminQuizMapper, never()).publish(
                 org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
     }
+
+    @Test
+    void deleteRejectsPublishedQuizWithoutRemovingContent() {
+        long quizId = 12L;
+        when(adminQuizMapper.findQuiz(quizId)).thenReturn(new AdminQuizData.QuizRow(
+                quizId, LocalDate.of(2026, 7, 12), "PUBLISHED", Instant.now(), Instant.now()
+        ));
+
+        assertThatThrownBy(() -> service.deleteDraft(quizId))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        org.assertj.core.api.Assertions.assertThat(exception.getCode())
+                                .isEqualTo("QUIZ_DRAFT_REQUIRED"));
+        verify(adminQuizMapper, never()).deleteKeys(quizId);
+        verify(adminQuizMapper, never()).deleteDraft(quizId);
+    }
 }

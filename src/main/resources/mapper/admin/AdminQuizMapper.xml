@@ -35,4 +35,27 @@
         UPDATE quiz_sets SET status = 'PUBLISHED', published_at = #{publishedAt}
         WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
     </update>
+    <update id="updateDraftDate">
+        UPDATE quiz_sets SET challenge_date = #{challengeDate}
+        WHERE id = #{quizSetId} AND status = 'DRAFT'
+    </update>
+    <delete id="deleteKeys">
+        DELETE FROM question_keys WHERE question_id IN (
+            SELECT q.id FROM questions q JOIN passages p ON p.id = q.passage_id
+            WHERE p.quiz_set_id = #{quizSetId}
+        )
+    </delete>
+    <delete id="deleteOptions">
+        DELETE FROM question_options WHERE question_id IN (
+            SELECT q.id FROM questions q JOIN passages p ON p.id = q.passage_id
+            WHERE p.quiz_set_id = #{quizSetId}
+        )
+    </delete>
+    <delete id="deleteQuestions">
+        DELETE FROM questions WHERE passage_id IN (
+            SELECT id FROM passages WHERE quiz_set_id = #{quizSetId}
+        )
+    </delete>
+    <delete id="deletePassages">DELETE FROM passages WHERE quiz_set_id = #{quizSetId}</delete>
+    <delete id="deleteDraft">DELETE FROM quiz_sets WHERE id = #{quizSetId} AND status = 'DRAFT'</delete>
 </mapper>

@@ -66,10 +66,41 @@ public class AdminQuizService {
         validate(command);
         AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(command.challengeDate());
         adminQuizMapper.insertQuiz(quiz);
+        writeContent(quiz.getId(), command);
+        return getQuiz(quiz.getId());
+    }
+
+    @Transactional
+    public QuizDetail updateDraft(long quizSetId, CreateQuiz command) {
+        validate(command);
+        requireDraft(quizSetId);
+        adminQuizMapper.deleteKeys(quizSetId);
+        adminQuizMapper.deleteOptions(quizSetId);
+        adminQuizMapper.deleteQuestions(quizSetId);
+        adminQuizMapper.deletePassages(quizSetId);
+        adminQuizMapper.updateDraftDate(quizSetId, command.challengeDate());
+        writeContent(quizSetId, command);
+        return getQuiz(quizSetId);
+    }
+
+    @Transactional
+    public void deleteDraft(long quizSetId) {
+        requireDraft(quizSetId);
+        adminQuizMapper.deleteKeys(quizSetId);
+        adminQuizMapper.deleteOptions(quizSetId);
+        adminQuizMapper.deleteQuestions(quizSetId);
+        adminQuizMapper.deletePassages(quizSetId);
+        if (adminQuizMapper.deleteDraft(quizSetId) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_DELETED",
+                    "Only a draft quiz can be deleted.");
+        }
+    }
+
+    private void writeContent(long quizSetId, CreateQuiz command) {
         for (int passageIndex = 0; passageIndex < command.passages().size(); passageIndex++) {
             CreatePassage sourcePassage = command.passages().get(passageIndex);
             AdminQuizData.PassageInsert passage = new AdminQuizData.PassageInsert(
-                    quiz.getId(), passageIndex + 1, clean(sourcePassage.title()),
+                    quizSetId, passageIndex + 1, clean(sourcePassage.title()),
                     sourcePassage.content().trim(), clean(sourcePassage.topic())
             );
             adminQuizMapper.insertPassage(passage);
@@ -93,7 +124,6 @@ public class AdminQuizService {
                         sourceQuestion.explanation().trim(), clean(sourceQuestion.evidence()));
             }
         }
-        return getQuiz(quiz.getId());
     }
 
     @Transactional
@@ -131,6 +161,14 @@ public class AdminQuizService {
     private AdminQuizData.QuizRow requireQuiz(long quizSetId) {
         AdminQuizData.QuizRow row = adminQuizMapper.findQuiz(quizSetId);
         if (row == null) throw new ApiException(HttpStatus.NOT_FOUND, "QUIZ_NOT_FOUND", "The quiz was not found.");
+        return row;
+    }
+    private AdminQuizData.QuizRow requireDraft(long quizSetId) {
+        AdminQuizData.QuizRow row = requireQuiz(quizSetId);
+        if (!"DRAFT".equals(row.status())) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DRAFT_REQUIRED",
+                    "Only a draft quiz can be changed.");
+        }
         return row;
     }
     private void invalidContent() { throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUIZ_CONTENT", "A quiz requires 3 passages, 3 questions per passage, and 4 options per question."); }

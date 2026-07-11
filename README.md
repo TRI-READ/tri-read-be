@@ -155,8 +155,13 @@ per question. Only one published quiz is allowed for a challenge date.
 GET  /api/admin/quizzes
 GET  /api/admin/quizzes/{quizSetId}
 POST /api/admin/quizzes
+PUT  /api/admin/quizzes/{quizSetId}
+DELETE /api/admin/quizzes/{quizSetId}
 POST /api/admin/quizzes/{quizSetId}/publish
 ```
+
+Only drafts can be edited or deleted. Published quizzes are immutable because
+attempt and answer history may already reference their content.
 
 ## Deployment Draft
 
