@@ -127,6 +127,17 @@ A perfect 9/9 attempt has no answer reviews and its daily orbit is immediately
 fully lit. Otherwise, the daily orbit becomes fully lit when all wrong answers
 from that attempt are recovered.
 
+## Study Orbit API
+
+```text
+GET /api/orbit?period=WEEK&anchor=2026-07-08
+GET /api/orbit?period=MONTH&anchor=2026-07-08
+```
+
+Orbit history is derived from quiz attempts and answer reviews, so it does not
+need a separate history table. Weekends are excluded. A perfect attempt is 100%
+lit immediately; otherwise brightness is the recovered wrong-answer ratio.
+
 ## Deployment Draft
 
 ```powershell
