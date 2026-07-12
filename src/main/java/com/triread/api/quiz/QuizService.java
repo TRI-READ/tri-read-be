@@ -1,0 +1,344 @@
+package com.triread.api.quiz;
+
+import com.triread.api.common.ApiException;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class QuizService {
+
+    private static final int PASSAGE_COUNT = 3;
+    private static final int QUESTIONS_PER_PASSAGE = 3;
+    private static final int OPTIONS_PER_QUESTION = 4;
+    private static final int TOTAL_QUESTIONS = PASSAGE_COUNT * QUESTIONS_PER_PASSAGE;
+
+    private final QuizMapper quizMapper;
+    private final Clock clock;
+
+    public QuizService(QuizMapper quizMapper, Clock clock) {
+        this.quizMapper = quizMapper;
+        this.clock = clock;
+    }
+
+    @Transactional(readOnly = true)
+    public TodayQuizResponse getTodayQuiz(long userId) {
+        LocalDate today = LocalDate.now(clock);
+        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, today);
+        QuizContent content = loadAndValidateContent(quizSet.quizSetId());
+
+        AttemptSummary attempt = quizSet.attemptId() == null
+                ? null
+                : new AttemptSummary(
+                        quizSet.attemptId(),
+                        quizSet.attemptScore(),
+                        quizSet.completedAt()
+                );
+
+        return new TodayQuizResponse(
+                quizSet.quizSetId(),
+                quizSet.challengeDate(),
+                quizSet.difficulty(),
+                attempt,
+                content.passages()
+        );
+    }
+
+    @Transactional
+    public QuizResultResponse submitAttempt(
+            long userId,
+            long quizSetId,
+            List<SubmittedAnswer> submittedAnswers
+    ) {
+        LocalDate today = LocalDate.now(clock);
+        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, today);
+        if (quizSet.quizSetId() != quizSetId) {
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND,
+                    "TODAY_QUIZ_NOT_FOUND",
+                    "Today's published quiz was not found."
+            );
+        }
+        if (quizSet.attemptId() != null) {
+            throw alreadyCompletedException();
+        }
+
+        QuizContent content = loadAndValidateContent(quizSetId);
+        List<QuizData.AnswerKeyRow> answerKeys = quizMapper.findAnswerKeys(quizSetId);
+        if (answerKeys.size() != TOTAL_QUESTIONS) {
+            throw invalidQuizContentException();
+        }
+
+        Map<Long, SubmittedAnswer> answersByQuestion =
+                validateSubmittedAnswers(submittedAnswers, content);
+        List<QuizData.AttemptAnswerInsert> answersToInsert = new ArrayList<>();
+        List<QuestionResult> questionResults = new ArrayList<>();
+        int score = 0;
+
+        for (QuizData.AnswerKeyRow answerKey : answerKeys) {
+            SubmittedAnswer submittedAnswer = answersByQuestion.get(answerKey.questionId());
+            boolean correct = submittedAnswer.selectedOptionId() == answerKey.correctOptionId();
+            if (correct) {
+                score++;
+            }
+
+            answersToInsert.add(new QuizData.AttemptAnswerInsert(
+                    0,
+                    answerKey.questionId(),
+                    submittedAnswer.selectedOptionId(),
+                    correct
+            ));
+            questionResults.add(new QuestionResult(
+                    answerKey.questionId(),
+                    submittedAnswer.selectedOptionId(),
+                    answerKey.correctOptionId(),
+                    correct,
+                    answerKey.explanation(),
+                    answerKey.evidence()
+            ));
+        }
+
+        Instant completedAt = clock.instant();
+        QuizData.QuizAttemptInsert attempt =
+                new QuizData.QuizAttemptInsert(userId, quizSetId, score, completedAt);
+        try {
+            quizMapper.insertAttempt(attempt);
+        } catch (DataIntegrityViolationException exception) {
+            throw alreadyCompletedException();
+        }
+
+        List<QuizData.AttemptAnswerInsert> persistedAnswers = answersToInsert.stream()
+                .map(answer -> new QuizData.AttemptAnswerInsert(
+                        attempt.getId(),
+                        answer.questionId(),
+                        answer.selectedOptionId(),
+                        answer.correct()
+                ))
+                .toList();
+        quizMapper.insertAttemptAnswers(persistedAnswers);
+
+        List<QuizData.AnswerReviewInsert> reviews = persistedAnswers.stream()
+                .filter(answer -> !answer.correct())
+                .map(answer -> new QuizData.AnswerReviewInsert(
+                        userId,
+                        answer.questionId(),
+                        attempt.getId()
+                ))
+                .toList();
+        if (!reviews.isEmpty()) {
+            quizMapper.insertAnswerReviews(reviews);
+        }
+
+        return new QuizResultResponse(
+                attempt.getId(),
+                quizSetId,
+                score,
+                TOTAL_QUESTIONS,
+                TOTAL_QUESTIONS - score,
+                completedAt,
+                questionResults
+        );
+    }
+
+    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate today) {
+        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(today, userId);
+        if (quizSet == null) {
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND,
+                    "TODAY_QUIZ_NOT_FOUND",
+                    "Today's published quiz was not found."
+            );
+        }
+        return quizSet;
+    }
+
+    private QuizContent loadAndValidateContent(long quizSetId) {
+        List<QuizData.PassageRow> passages = quizMapper.findPassages(quizSetId);
+        List<QuizData.QuestionRow> questions = quizMapper.findQuestions(quizSetId);
+        List<QuizData.OptionRow> options = quizMapper.findOptions(quizSetId);
+
+        if (passages.size() != PASSAGE_COUNT
+                || questions.size() != TOTAL_QUESTIONS
+                || options.size() != TOTAL_QUESTIONS * OPTIONS_PER_QUESTION) {
+            throw invalidQuizContentException();
+        }
+
+        Map<Long, List<OptionResponse>> optionsByQuestion = new LinkedHashMap<>();
+        Map<Long, Set<Long>> optionIdsByQuestion = new HashMap<>();
+        for (QuizData.OptionRow option : options) {
+            optionsByQuestion.computeIfAbsent(option.questionId(), ignored -> new ArrayList<>())
+                    .add(new OptionResponse(
+                            option.optionId(),
+                            option.position(),
+                            option.content()
+                    ));
+            optionIdsByQuestion.computeIfAbsent(option.questionId(), ignored -> new HashSet<>())
+                    .add(option.optionId());
+        }
+
+        Map<Long, List<QuestionResponse>> questionsByPassage = new LinkedHashMap<>();
+        for (QuizData.QuestionRow question : questions) {
+            List<OptionResponse> questionOptions = optionsByQuestion.get(question.questionId());
+            if (questionOptions == null || questionOptions.size() != OPTIONS_PER_QUESTION) {
+                throw invalidQuizContentException();
+            }
+
+            questionsByPassage.computeIfAbsent(question.passageId(), ignored -> new ArrayList<>())
+                    .add(new QuestionResponse(
+                            question.questionId(),
+                            question.position(),
+                            question.content(),
+                            questionOptions
+                    ));
+        }
+
+        List<PassageResponse> passageResponses = new ArrayList<>();
+        for (QuizData.PassageRow passage : passages) {
+            List<QuestionResponse> passageQuestions = questionsByPassage.get(passage.passageId());
+            if (passageQuestions == null || passageQuestions.size() != QUESTIONS_PER_PASSAGE) {
+                throw invalidQuizContentException();
+            }
+
+            passageResponses.add(new PassageResponse(
+                    passage.passageId(),
+                    passage.position(),
+                    passage.title(),
+                    passage.content(),
+                    passage.topic(),
+                    passageQuestions
+            ));
+        }
+
+        return new QuizContent(passageResponses, optionIdsByQuestion);
+    }
+
+    private Map<Long, SubmittedAnswer> validateSubmittedAnswers(
+            List<SubmittedAnswer> submittedAnswers,
+            QuizContent content
+    ) {
+        if (submittedAnswers == null || submittedAnswers.size() != TOTAL_QUESTIONS) {
+            throw invalidAnswersException();
+        }
+
+        Map<Long, SubmittedAnswer> answersByQuestion = new HashMap<>();
+        for (SubmittedAnswer answer : submittedAnswers) {
+            Set<Long> optionIds = content.optionIdsByQuestion().get(answer.questionId());
+            if (optionIds == null
+                    || !optionIds.contains(answer.selectedOptionId())
+                    || answersByQuestion.putIfAbsent(answer.questionId(), answer) != null) {
+                throw invalidAnswersException();
+            }
+        }
+
+        if (answersByQuestion.size() != TOTAL_QUESTIONS) {
+            throw invalidAnswersException();
+        }
+        return answersByQuestion;
+    }
+
+    private ApiException invalidAnswersException() {
+        return new ApiException(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_QUIZ_ANSWERS",
+                "Exactly one valid answer is required for every question."
+        );
+    }
+
+    private ApiException invalidQuizContentException() {
+        return new ApiException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "QUIZ_CONTENT_INVALID",
+                "The published quiz does not contain 3 passages and 9 complete questions."
+        );
+    }
+
+    private ApiException alreadyCompletedException() {
+        return new ApiException(
+                HttpStatus.CONFLICT,
+                "QUIZ_ALREADY_COMPLETED",
+                "This quiz has already been completed."
+        );
+    }
+
+    private record QuizContent(
+            List<PassageResponse> passages,
+            Map<Long, Set<Long>> optionIdsByQuestion
+    ) {
+    }
+
+    public record SubmittedAnswer(long questionId, long selectedOptionId) {
+    }
+
+    public record TodayQuizResponse(
+            long quizSetId,
+            LocalDate challengeDate,
+            String difficulty,
+            AttemptSummary attempt,
+            List<PassageResponse> passages
+    ) {
+    }
+
+    public record AttemptSummary(
+            long attemptId,
+            int score,
+            Instant completedAt
+    ) {
+    }
+
+    public record PassageResponse(
+            long passageId,
+            short position,
+            String title,
+            String content,
+            String topic,
+            List<QuestionResponse> questions
+    ) {
+    }
+
+    public record QuestionResponse(
+            long questionId,
+            short position,
+            String content,
+            List<OptionResponse> options
+    ) {
+    }
+
+    public record OptionResponse(
+            long optionId,
+            short position,
+            String content
+    ) {
+    }
+
+    public record QuizResultResponse(
+            long attemptId,
+            long quizSetId,
+            int score,
+            int totalQuestions,
+            int wrongCount,
+            Instant completedAt,
+            List<QuestionResult> answers
+    ) {
+    }
+
+    public record QuestionResult(
+            long questionId,
+            long selectedOptionId,
+            long correctOptionId,
+            boolean correct,
+            String explanation,
+            String evidence
+    ) {
+    }
+}
