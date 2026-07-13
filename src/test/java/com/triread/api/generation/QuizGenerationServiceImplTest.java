@@ -105,7 +105,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void returnsGenerationLogWithStructuredValidationIssues() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
-                42L, 7L, LocalDate.of(2026, 7, 20), "OPENAI", "generation-model", "v1",
+                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
                 "READY", 1, 95, null, NOW, NOW, NOW);
         when(mapper.findLog(42L)).thenReturn(log);
         when(mapper.findValidationResults(42L)).thenReturn(List.of(

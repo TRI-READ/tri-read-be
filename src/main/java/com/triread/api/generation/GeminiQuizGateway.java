@@ -5,7 +5,6 @@ import com.triread.api.common.ApiException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -15,7 +14,6 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-@ConditionalOnProperty(prefix = "app.quiz-generation", name = "provider", havingValue = "gemini")
 public class GeminiQuizGateway implements QuizAiGateway {
     private static final String GENERATION_INSTRUCTIONS = """
             You create original Korean non-fiction reading quizzes for Korean high-school seniors.
