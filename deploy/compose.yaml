@@ -2,6 +2,17 @@ services:
   db:
     image: postgres:18-bookworm
     restart: unless-stopped
+    mem_limit: 300m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -16,14 +27,15 @@ services:
       retries: 5
 
   app:
-    build:
-      context: ..
     image: tri-read-be:latest
     restart: unless-stopped
+    mem_limit: 480m
     expose:
       - "8080"
     env_file:
-      - .env
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      JAVA_TOOL_OPTIONS: -Xms128m -Xmx320m -Xss256k -XX:+UseSerialGC
     depends_on:
       db:
         condition: service_healthy
@@ -31,6 +43,7 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    mem_limit: 96m
     ports:
       - "80:80"
       - "443:443"
@@ -43,6 +56,12 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

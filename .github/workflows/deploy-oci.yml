@@ -1,0 +1,76 @@
+name: Deploy backend to OCI
+
+on:
+  workflow_run:
+    workflows:
+      - Backend CI
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-oci-dev
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      OCI_HOST: ${{ secrets.OCI_HOST }}
+      OCI_USER: ${{ secrets.OCI_USER }}
+
+    steps:
+      - name: Checkout tested revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Build backend image
+        run: docker build --tag tri-read-be:latest .
+
+      - name: Package backend image
+        run: docker save tri-read-be:latest | gzip > /tmp/tri-read-be.tar.gz
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$OCI_HOST"
+          test -n "$OCI_USER"
+          test -n "$OCI_SSH_PRIVATE_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci
+          chmod 600 ~/.ssh/oci
+          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload deployment files
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" \
+            'mkdir -p ~/tri-read/frontend/out'
+          scp -i ~/.ssh/oci deploy/compose.yaml deploy/Caddyfile \
+            "$OCI_USER@$OCI_HOST:~/tri-read/"
+          scp -i ~/.ssh/oci /tmp/tri-read-be.tar.gz \
+            "$OCI_USER@$OCI_HOST:~/tri-read/tri-read-be.tar.gz"
+
+      - name: Start services
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" '
+            set -eu
+            cd ~/tri-read
+            test -f .env
+            docker load --input tri-read-be.tar.gz
+            docker compose --env-file .env -f compose.yaml up -d --no-build --remove-orphans
+            rm tri-read-be.tar.gz
+            docker image prune -f
+            docker compose --env-file .env -f compose.yaml ps
+          '
