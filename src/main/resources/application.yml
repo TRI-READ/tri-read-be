@@ -33,6 +33,7 @@ app:
   time-zone: Asia/Seoul
   quiz-generation:
     enabled: ${QUIZ_GENERATION_ENABLED:false}
+    provider: ${AI_PROVIDER:openai}
     auto-publish: ${QUIZ_AUTO_PUBLISH:false}
     max-attempts: ${QUIZ_GENERATION_MAX_ATTEMPTS:3}
     pass-score: ${QUIZ_VALIDATION_PASS_SCORE:90}
@@ -42,4 +43,10 @@ app:
       base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       generation-model: ${OPENAI_GENERATION_MODEL:gpt-5.4}
       validation-model: ${OPENAI_VALIDATION_MODEL:gpt-5.4-mini}
+      prompt-version: ${QUIZ_PROMPT_VERSION:v1}
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+      generation-model: ${GEMINI_GENERATION_MODEL:gemini-2.5-flash}
+      validation-model: ${GEMINI_VALIDATION_MODEL:gemini-2.5-flash}
       prompt-version: ${QUIZ_PROMPT_VERSION:v1}

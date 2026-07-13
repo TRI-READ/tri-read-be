@@ -1,8 +1,5 @@
 package com.triread.api.generation;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
 import java.time.LocalDate;
@@ -13,11 +10,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
-@ConditionalOnProperty(prefix = "app.quiz-generation", name = "provider",
-        havingValue = "openai", matchIfMissing = true)
-public class OpenAiQuizGateway implements QuizAiGateway {
+@ConditionalOnProperty(prefix = "app.quiz-generation", name = "provider", havingValue = "gemini")
+public class GeminiQuizGateway implements QuizAiGateway {
     private static final String GENERATION_INSTRUCTIONS = """
             You create original Korean non-fiction reading quizzes for Korean high-school seniors.
             Produce exactly 3 passages with distinct topics: humanities/social science, science/technology,
@@ -40,10 +39,15 @@ public class OpenAiQuizGateway implements QuizAiGateway {
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
-    public OpenAiQuizGateway(QuizGenerationProperties properties, ObjectMapper objectMapper) {
+    public GeminiQuizGateway(QuizGenerationProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper,
+                RestClient.builder().baseUrl(properties.getGemini().getBaseUrl()).build());
+    }
+
+    GeminiQuizGateway(QuizGenerationProperties properties, ObjectMapper objectMapper, RestClient restClient) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.restClient = RestClient.builder().baseUrl(properties.getOpenai().getBaseUrl()).build();
+        this.restClient = restClient;
     }
 
     @Override
@@ -51,7 +55,7 @@ public class OpenAiQuizGateway implements QuizAiGateway {
         String input = "Create the TRI:READ quiz for " + targetDate
                 + ". All passages and questions must be written in Korean.";
         JsonNode payload = call(generationModel(), GENERATION_INSTRUCTIONS, input,
-                "tri_read_quiz", generationSchema(), 20_000);
+                generationSchema(), 20_000);
         try {
             GeneratedQuiz generated = objectMapper.treeToValue(payload, GeneratedQuiz.class);
             return new AdminQuizService.CreateQuiz(targetDate, generated.passages().stream().map(passage ->
@@ -60,7 +64,8 @@ public class OpenAiQuizGateway implements QuizAiGateway {
                                     question.content(), question.options(), question.correctOptionPosition(),
                                     question.explanation(), question.evidence())).toList())).toList());
         } catch (JacksonException exception) {
-            throw gatewayError("OPENAI_GENERATION_RESPONSE_INVALID", "Generated quiz JSON could not be parsed.", exception);
+            throw gatewayError("GEMINI_GENERATION_RESPONSE_INVALID",
+                    "Generated quiz JSON could not be parsed.", exception);
         }
     }
 
@@ -69,59 +74,61 @@ public class OpenAiQuizGateway implements QuizAiGateway {
         try {
             String input = "Independently validate this quiz:\n" + objectMapper.writeValueAsString(quiz);
             JsonNode payload = call(validationModel(), VALIDATION_INSTRUCTIONS, input,
-                    "tri_read_validation", validationSchema(), 8_000);
+                    validationSchema(), 8_000);
             return objectMapper.treeToValue(payload, QuizValidation.Result.class);
         } catch (JacksonException exception) {
-            throw gatewayError("OPENAI_VALIDATION_RESPONSE_INVALID", "Validation JSON could not be parsed.", exception);
+            throw gatewayError("GEMINI_VALIDATION_RESPONSE_INVALID",
+                    "Validation JSON could not be parsed.", exception);
         }
     }
 
-    private JsonNode call(String model, String instructions, String input, String schemaName,
+    private JsonNode call(String model, String instructions, String input,
                           JsonNode schema, int maxOutputTokens) {
         requireApiKey();
         Map<String, Object> request = Map.of(
-                "model", model,
-                "instructions", instructions,
-                "input", input,
-                "max_output_tokens", maxOutputTokens,
-                "text", Map.of("format", Map.of(
-                        "type", "json_schema", "name", schemaName, "strict", true, "schema", schema
-                ))
+                "contents", List.of(Map.of(
+                        "role", "user",
+                        "parts", List.of(Map.of("text", instructions + "\n\n" + input)))),
+                "generationConfig", Map.of(
+                        "responseMimeType", "application/json",
+                        "responseJsonSchema", schema,
+                        "maxOutputTokens", maxOutputTokens)
         );
         try {
             JsonNode response = restClient.post()
-                    .uri("/v1/responses")
-                    .header("Authorization", "Bearer " + properties.getOpenai().getApiKey())
+                    .uri("/v1beta/models/{model}:generateContent", model)
+                    .header("x-goog-api-key", properties.getGemini().getApiKey())
                     .body(request)
                     .retrieve()
                     .body(JsonNode.class);
             return extractOutputText(response);
         } catch (RestClientException exception) {
-            throw gatewayError("OPENAI_REQUEST_FAILED", "OpenAI request failed.", exception);
+            throw gatewayError("GEMINI_REQUEST_FAILED", "Gemini request failed.", exception);
         }
     }
 
-    private JsonNode extractOutputText(JsonNode response) {
+    JsonNode extractOutputText(JsonNode response) {
         if (response != null) {
-            for (JsonNode output : response.path("output")) {
-                for (JsonNode content : output.path("content")) {
-                    if ("output_text".equals(content.path("type").asText()) && content.hasNonNull("text")) {
+            for (JsonNode candidate : response.path("candidates")) {
+                for (JsonNode part : candidate.path("content").path("parts")) {
+                    if (part.hasNonNull("text")) {
                         try {
-                            return objectMapper.readTree(content.get("text").asText());
+                            return objectMapper.readTree(part.get("text").asText());
                         } catch (JacksonException exception) {
-                            throw gatewayError("OPENAI_RESPONSE_INVALID", "OpenAI returned invalid structured output.", exception);
+                            throw gatewayError("GEMINI_RESPONSE_INVALID",
+                                    "Gemini returned invalid structured output.", exception);
                         }
                     }
                 }
             }
         }
-        throw gatewayError("OPENAI_RESPONSE_EMPTY", "OpenAI returned no structured output.", null);
+        throw gatewayError("GEMINI_RESPONSE_EMPTY", "Gemini returned no structured output.", null);
     }
 
     private void requireApiKey() {
-        if (properties.getOpenai().getApiKey() == null || properties.getOpenai().getApiKey().isBlank()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "OPENAI_API_KEY_MISSING",
-                    "OPENAI_API_KEY must be configured before generating quizzes.");
+        if (properties.getGemini().getApiKey() == null || properties.getGemini().getApiKey().isBlank()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GEMINI_API_KEY_MISSING",
+                    "GEMINI_API_KEY must be configured before generating quizzes.");
         }
     }
 
@@ -150,10 +157,10 @@ public class OpenAiQuizGateway implements QuizAiGateway {
         }
     }
 
-    @Override public String provider() { return "OPENAI"; }
-    @Override public String generationModel() { return properties.getOpenai().getGenerationModel(); }
-    @Override public String validationModel() { return properties.getOpenai().getValidationModel(); }
-    @Override public String promptVersion() { return properties.getOpenai().getPromptVersion(); }
+    @Override public String provider() { return "GEMINI"; }
+    @Override public String generationModel() { return properties.getGemini().getGenerationModel(); }
+    @Override public String validationModel() { return properties.getGemini().getValidationModel(); }
+    @Override public String promptVersion() { return properties.getGemini().getPromptVersion(); }
 
     public record GeneratedQuiz(List<GeneratedPassage> passages) {}
     public record GeneratedPassage(String title, String topic, String content,

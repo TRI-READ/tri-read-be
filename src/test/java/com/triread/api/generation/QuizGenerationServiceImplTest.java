@@ -47,6 +47,7 @@ class QuizGenerationServiceImplTest {
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 aiGateway, properties, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
+        lenient().when(aiGateway.provider()).thenReturn("GEMINI");
         lenient().when(aiGateway.promptVersion()).thenReturn("v1");
         lenient().doAnswer(invocation -> {
             QuizGenerationData.GenerationLogInsert log = invocation.getArgument(0);
@@ -66,7 +67,7 @@ class QuizGenerationServiceImplTest {
         when(aiGateway.generate(date)).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(ruleResult);
         when(aiGateway.validate(generated)).thenReturn(aiResult);
-        when(adminQuizService.createReviewedDraft(generated, "OPENAI", "generation-model", "v1"))
+        when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model", "v1"))
                 .thenReturn(detail);
 
         QuizGenerationService.GenerationResult result = service.generate(date);

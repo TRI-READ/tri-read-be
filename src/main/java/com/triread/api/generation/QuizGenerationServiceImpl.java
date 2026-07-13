@@ -15,8 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuizGenerationServiceImpl implements QuizGenerationService {
-    private static final String PROVIDER = "OPENAI";
-
     private final QuizGenerationMapper mapper;
     private final AdminQuizService adminQuizService;
     private final RuleBasedQuizValidator ruleValidator;
@@ -52,7 +50,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         }
 
         QuizGenerationData.GenerationLogInsert log = new QuizGenerationData.GenerationLogInsert(
-                targetDate, PROVIDER, aiGateway.generationModel(), aiGateway.promptVersion(), "GENERATING");
+                targetDate, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion(), "GENERATING");
         mapper.insertLog(log);
         long logId = log.getId();
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
@@ -90,7 +88,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 }
 
                 AdminQuizService.QuizDetail quiz = adminQuizService.createReviewedDraft(
-                        generated, PROVIDER, aiGateway.generationModel(), aiGateway.promptVersion());
+                        generated, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion());
                 long quizSetId = quiz.quiz().quizSetId();
                 persistedQuizId = quizSetId;
                 saveValidation(logId, quizSetId, attempt, "RULE", ruleResult);
@@ -109,7 +107,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                             null, latestRaw, latestError, clock.instant());
                     throw exception;
                 }
-                boolean configurationError = "OPENAI_API_KEY_MISSING".equals(exception.getCode());
+                boolean configurationError = exception.getCode().endsWith("_API_KEY_MISSING");
                 boolean finalAttempt = attempt == maxAttempts || configurationError;
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
                         null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
