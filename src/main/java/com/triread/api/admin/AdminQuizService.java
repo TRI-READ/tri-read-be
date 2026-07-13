@@ -71,9 +71,31 @@ public class AdminQuizService {
     }
 
     @Transactional
+    public QuizDetail createReviewedDraft(CreateQuiz command, String aiProvider,
+                                          String aiModel, String promptVersion) {
+        validate(command);
+        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(command.challengeDate());
+        adminQuizMapper.insertQuiz(quiz);
+        writeContent(quiz.getId(), command);
+        if (adminQuizMapper.markReviewed(quiz.getId(), aiProvider, aiModel, promptVersion) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_REVIEWED",
+                    "The generated quiz could not be marked as reviewed.");
+        }
+        return getQuiz(quiz.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasActiveQuiz(LocalDate challengeDate) {
+        return adminQuizMapper.countActiveByDate(challengeDate) > 0;
+    }
+
+    @Transactional
     public QuizDetail updateDraft(long quizSetId, CreateQuiz command) {
         validate(command);
-        requireDraft(quizSetId);
+        AdminQuizData.QuizRow quiz = requireEditable(quizSetId);
+        if ("REVIEWED".equals(quiz.status())) {
+            adminQuizMapper.invalidateGeneration(quizSetId, clock.instant());
+        }
         adminQuizMapper.deleteKeys(quizSetId);
         adminQuizMapper.deleteOptions(quizSetId);
         adminQuizMapper.deleteQuestions(quizSetId);
@@ -85,7 +107,10 @@ public class AdminQuizService {
 
     @Transactional
     public void deleteDraft(long quizSetId) {
-        requireDraft(quizSetId);
+        AdminQuizData.QuizRow quiz = requireEditable(quizSetId);
+        if ("REVIEWED".equals(quiz.status())) {
+            adminQuizMapper.invalidateGeneration(quizSetId, clock.instant());
+        }
         adminQuizMapper.deleteKeys(quizSetId);
         adminQuizMapper.deleteOptions(quizSetId);
         adminQuizMapper.deleteQuestions(quizSetId);
@@ -163,11 +188,11 @@ public class AdminQuizService {
         if (row == null) throw new ApiException(HttpStatus.NOT_FOUND, "QUIZ_NOT_FOUND", "The quiz was not found.");
         return row;
     }
-    private AdminQuizData.QuizRow requireDraft(long quizSetId) {
+    private AdminQuizData.QuizRow requireEditable(long quizSetId) {
         AdminQuizData.QuizRow row = requireQuiz(quizSetId);
-        if (!"DRAFT".equals(row.status())) {
+        if (!"DRAFT".equals(row.status()) && !"REVIEWED".equals(row.status())) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DRAFT_REQUIRED",
-                    "Only a draft quiz can be changed.");
+                    "Only a draft or reviewed quiz can be changed.");
         }
         return row;
     }

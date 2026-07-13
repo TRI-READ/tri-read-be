@@ -160,8 +160,26 @@ DELETE /api/admin/quizzes/{quizSetId}
 POST /api/admin/quizzes/{quizSetId}/publish
 ```
 
-Only drafts can be edited or deleted. Published quizzes are immutable because
+Drafts and AI-reviewed quizzes can be edited or deleted. Editing a reviewed quiz
+returns it to draft status and invalidates its automated validation log. Published quizzes are immutable because
 attempt and answer history may already reference their content.
+
+## Automated Quiz Generation
+
+Generation uses OpenAI structured outputs, deterministic server rules, and an
+independent AI validation pass. A quiz is saved as `REVIEWED` only after both
+validators score at least 90. Failed generations retry up to three times, and
+auto-publishing is disabled by default so an administrator can inspect the result.
+
+```text
+POST /api/admin/quiz-generations
+GET  /api/admin/quiz-generations
+GET  /api/admin/quiz-generations/{generationLogId}
+```
+
+Copy `.env.example` to your local environment configuration and provide the
+OpenAI API key as an environment variable. Never commit the real key. The same
+variable names are configured as deployment secrets on OCI.
 
 ## Deployment Draft
 
