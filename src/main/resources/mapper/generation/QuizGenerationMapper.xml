@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.generation.QuizGenerationMapper">
+    <insert id="insertLog" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO generation_logs (
+            target_date, ai_provider, ai_model, prompt_version, status
+        ) VALUES (
+            #{targetDate}, #{aiProvider}, #{aiModel}, #{promptVersion}, #{status}
+        )
+    </insert>
+
+    <update id="updateLog">
+        UPDATE generation_logs
+        SET quiz_set_id = COALESCE(#{quizSetId}, quiz_set_id),
+            status = #{status},
+            attempt_count = #{attemptCount},
+            validation_score = #{validationScore},
+            raw_response = #{rawResponse},
+            error_message = #{errorMessage},
+            completed_at = #{completedAt},
+            updated_at = #{updatedAt}
+        WHERE id = #{generationLogId}
+    </update>
+
+    <insert id="insertValidationResult">
+        INSERT INTO quiz_validation_results (
+            generation_log_id, quiz_set_id, attempt_number, validation_type, passed, score, issues_json
+        ) VALUES (
+            #{generationLogId}, #{quizSetId}, #{attemptNumber}, #{validationType}, #{passed}, #{score},
+            CAST(#{issuesJson} AS JSONB)
+        )
+    </insert>
+
+    <sql id="logColumns">
+        id AS generation_log_id, quiz_set_id, target_date, ai_provider, ai_model,
+        prompt_version, status, attempt_count, validation_score, error_message,
+        created_at, updated_at, completed_at
+    </sql>
+
+    <select id="findLogs" resultType="com.triread.api.generation.QuizGenerationData$GenerationLogRow">
+        SELECT <include refid="logColumns"/>
+        FROM generation_logs
+        ORDER BY created_at DESC
+        LIMIT 100
+    </select>
+
+    <select id="findLog" resultType="com.triread.api.generation.QuizGenerationData$GenerationLogRow">
+        SELECT <include refid="logColumns"/>
+        FROM generation_logs
+        WHERE id = #{generationLogId}
+    </select>
+
+    <select id="findValidationResults"
+            resultType="com.triread.api.generation.QuizGenerationData$ValidationResultRow">
+        SELECT id AS validation_result_id, generation_log_id, quiz_set_id, attempt_number,
+               validation_type, passed, score, issues_json::TEXT AS issues_json, created_at
+        FROM quiz_validation_results
+        WHERE generation_log_id = #{generationLogId}
+        ORDER BY attempt_number, created_at, id
+    </select>
+</mapper>

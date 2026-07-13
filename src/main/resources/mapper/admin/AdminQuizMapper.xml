@@ -12,6 +12,10 @@
     <select id="countPublishedByDate" resultType="int">
         SELECT COUNT(*) FROM quiz_sets WHERE challenge_date = #{challengeDate} AND status = 'PUBLISHED'
     </select>
+    <select id="countActiveByDate" resultType="int">
+        SELECT COUNT(*) FROM quiz_sets
+        WHERE challenge_date = #{challengeDate} AND status IN ('DRAFT', 'REVIEWED', 'PUBLISHED')
+    </select>
     <insert id="insertQuiz" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO quiz_sets (challenge_date, status) VALUES (#{challengeDate}, 'DRAFT')
     </insert>
@@ -35,9 +39,23 @@
         UPDATE quiz_sets SET status = 'PUBLISHED', published_at = #{publishedAt}
         WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
     </update>
-    <update id="updateDraftDate">
-        UPDATE quiz_sets SET challenge_date = #{challengeDate}
+    <update id="markReviewed">
+        UPDATE quiz_sets
+        SET status = 'REVIEWED', ai_provider = #{aiProvider}, ai_model = #{aiModel},
+            prompt_version = #{promptVersion}
         WHERE id = #{quizSetId} AND status = 'DRAFT'
+    </update>
+    <update id="updateDraftDate">
+        UPDATE quiz_sets SET challenge_date = #{challengeDate}, status = 'DRAFT'
+        WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
+    </update>
+    <update id="invalidateGeneration">
+        UPDATE generation_logs
+        SET status = 'INVALIDATED',
+            error_message = 'The reviewed quiz was edited or deleted by an administrator.',
+            completed_at = COALESCE(completed_at, #{updatedAt}),
+            updated_at = #{updatedAt}
+        WHERE quiz_set_id = #{quizSetId} AND status IN ('READY', 'PUBLISHED')
     </update>
     <delete id="deleteKeys">
         DELETE FROM question_keys WHERE question_id IN (
@@ -57,5 +75,7 @@
         )
     </delete>
     <delete id="deletePassages">DELETE FROM passages WHERE quiz_set_id = #{quizSetId}</delete>
-    <delete id="deleteDraft">DELETE FROM quiz_sets WHERE id = #{quizSetId} AND status = 'DRAFT'</delete>
+    <delete id="deleteDraft">
+        DELETE FROM quiz_sets WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
+    </delete>
 </mapper>

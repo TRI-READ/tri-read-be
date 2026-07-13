@@ -11,6 +11,7 @@ public interface AdminQuizMapper {
     List<AdminQuizData.QuizRow> findQuizzes();
     AdminQuizData.QuizRow findQuiz(long quizSetId);
     int countPublishedByDate(LocalDate challengeDate);
+    int countActiveByDate(LocalDate challengeDate);
     int insertQuiz(AdminQuizData.QuizInsert quiz);
     int insertPassage(AdminQuizData.PassageInsert passage);
     int insertQuestion(AdminQuizData.QuestionInsert question);
@@ -20,7 +21,12 @@ public interface AdminQuizMapper {
                   @Param("explanation") String explanation,
                   @Param("evidence") String evidence);
     int publish(@Param("quizSetId") long quizSetId, @Param("publishedAt") Instant publishedAt);
+    int markReviewed(@Param("quizSetId") long quizSetId,
+                     @Param("aiProvider") String aiProvider,
+                     @Param("aiModel") String aiModel,
+                     @Param("promptVersion") String promptVersion);
     int updateDraftDate(@Param("quizSetId") long quizSetId, @Param("challengeDate") LocalDate challengeDate);
+    int invalidateGeneration(@Param("quizSetId") long quizSetId, @Param("updatedAt") Instant updatedAt);
     int deleteKeys(long quizSetId);
     int deleteOptions(long quizSetId);
     int deleteQuestions(long quizSetId);

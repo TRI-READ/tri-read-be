@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.triread.api.common.ApiException;
 import com.triread.api.quiz.QuizMapper;
@@ -74,5 +75,18 @@ class AdminQuizServiceTest {
                                 .isEqualTo("QUIZ_DRAFT_REQUIRED"));
         verify(adminQuizMapper, never()).deleteKeys(quizId);
         verify(adminQuizMapper, never()).deleteDraft(quizId);
+    }
+
+    @Test
+    void deletingReviewedQuizInvalidatesItsGenerationLog() {
+        long quizId = 13L;
+        when(adminQuizMapper.findQuiz(quizId)).thenReturn(new AdminQuizData.QuizRow(
+                quizId, LocalDate.of(2026, 7, 13), "REVIEWED", Instant.now(), null));
+        when(adminQuizMapper.deleteDraft(quizId)).thenReturn(1);
+
+        service.deleteDraft(quizId);
+
+        verify(adminQuizMapper).invalidateGeneration(org.mockito.ArgumentMatchers.eq(quizId), any());
+        verify(adminQuizMapper).deleteDraft(quizId);
     }
 }
