@@ -36,7 +36,7 @@ app:
     auto-publish: ${QUIZ_AUTO_PUBLISH:false}
     max-attempts: ${QUIZ_GENERATION_MAX_ATTEMPTS:3}
     pass-score: ${QUIZ_VALIDATION_PASS_SCORE:90}
-    cron: ${QUIZ_GENERATION_CRON:0 0 3 * * SUN}
+    cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     gemini:
       api-key: ${GEMINI_API_KEY:}
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}

@@ -10,7 +10,7 @@ public class QuizGenerationProperties {
     private boolean autoPublish;
     private int maxAttempts = 3;
     private int passScore = 90;
-    private String cron = "0 0 3 * * SUN";
+    private String cron = "0 10 3 * * *";
     private final Gemini gemini = new Gemini();
 
     public boolean isEnabled() { return enabled; }
