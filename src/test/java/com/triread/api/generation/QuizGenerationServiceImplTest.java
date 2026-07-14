@@ -44,6 +44,7 @@ class QuizGenerationServiceImplTest {
         properties = new QuizGenerationProperties();
         properties.setMaxAttempts(3);
         properties.setPassScore(90);
+        properties.setRetryDelayMs(0);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 aiGateway, properties, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
@@ -100,6 +101,27 @@ class QuizGenerationServiceImplTest {
         verify(aiGateway, times(2)).generate(date);
         verify(mapper).updateLog(eq(42L), isNull(), eq("RETRYING"), eq(1), eq(70),
                 anyString(), anyString(), isNull(), eq(NOW));
+    }
+
+    @Test
+    void retriesTransientGeminiFailure() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
+
+        when(aiGateway.generate(date))
+                .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "GEMINI_UNAVAILABLE", "Temporarily unavailable"))
+                .thenReturn(generated);
+        when(ruleValidator.validate(generated)).thenReturn(passed);
+        when(aiGateway.validate(generated)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+                .thenReturn(detail(9L, date, "REVIEWED"));
+
+        QuizGenerationService.GenerationResult result = service.generate(date);
+
+        assertThat(result.attemptCount()).isEqualTo(2);
+        verify(aiGateway, times(2)).generate(date);
     }
 
     @Test

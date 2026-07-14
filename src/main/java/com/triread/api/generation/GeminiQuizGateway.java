@@ -5,10 +5,12 @@ import com.triread.api.common.ApiException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -19,9 +21,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
             You create original Korean non-fiction reading quizzes for Korean high-school seniors.
             Produce exactly 3 passages with distinct topics: humanities/social science, science/technology,
             and economics/law/interdisciplinary. Each passage must have exactly 3 questions and each
-            question exactly 4 unique options. Use only information stated or logically derivable from
+            passage content must contain 1,200 to 1,800 Korean characters. Each question must have
+            exactly 4 unique options. Use only information stated or logically derivable from
             the passage. Ensure exactly one correct answer. Evidence must be an exact excerpt copied from
-            the passage. Write original passages without copying or closely imitating published material.
+            the passage as one contiguous substring: do not paraphrase, normalize spacing, add ellipses,
+            or change punctuation. Write original passages without copying or closely imitating published material.
             Vary question types among comprehension, inference, application, and argument structure.
             """;
     private static final String VALIDATION_INSTRUCTIONS = """
@@ -37,6 +41,7 @@ public class GeminiQuizGateway implements QuizAiGateway {
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
+    @Autowired
     public GeminiQuizGateway(QuizGenerationProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper,
                 RestClient.builder().baseUrl(properties.getGemini().getBaseUrl()).build());
@@ -100,6 +105,13 @@ public class GeminiQuizGateway implements QuizAiGateway {
                     .retrieve()
                     .body(JsonNode.class);
             return extractOutputText(response);
+        } catch (RestClientResponseException exception) {
+            String code = switch (exception.getStatusCode().value()) {
+                case 429 -> "GEMINI_RATE_LIMITED";
+                case 502, 503, 504 -> "GEMINI_UNAVAILABLE";
+                default -> "GEMINI_REQUEST_FAILED";
+            };
+            throw gatewayError(code, "Gemini request failed.", exception);
         } catch (RestClientException exception) {
             throw gatewayError("GEMINI_REQUEST_FAILED", "Gemini request failed.", exception);
         }

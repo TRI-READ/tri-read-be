@@ -11,6 +11,7 @@ public class QuizGenerationProperties {
     private int maxAttempts = 3;
     private int passScore = 90;
     private int variantsPerDate = 3;
+    private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
     private final Gemini gemini = new Gemini();
 
@@ -24,6 +25,8 @@ public class QuizGenerationProperties {
     public void setPassScore(int passScore) { this.passScore = passScore; }
     public int getVariantsPerDate() { return variantsPerDate; }
     public void setVariantsPerDate(int variantsPerDate) { this.variantsPerDate = variantsPerDate; }
+    public long getRetryDelayMs() { return retryDelayMs; }
+    public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }
     public void setCron(String cron) { this.cron = cron; }
     public Gemini getGemini() { return gemini; }
@@ -31,8 +34,8 @@ public class QuizGenerationProperties {
     public static class Gemini {
         private String apiKey = "";
         private String baseUrl = "https://generativelanguage.googleapis.com";
-        private String generationModel = "gemini-2.5-flash";
-        private String validationModel = "gemini-2.5-flash";
+        private String generationModel = "gemini-3.1-flash-lite";
+        private String validationModel = "gemini-3.1-flash-lite";
         private String promptVersion = "v1";
 
         public String getApiKey() { return apiKey; }

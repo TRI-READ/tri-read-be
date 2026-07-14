@@ -113,6 +113,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
                         null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
                 if (configurationError) throw exception;
+                if (!finalAttempt && isTransient(exception)) waitBeforeRetry(attempt);
             } catch (RuntimeException exception) {
                 latestError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
                 if (persistedQuizId != null) {
@@ -133,6 +134,23 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private boolean passes(QuizValidation.Result result) {
         return result.passed() && result.score() >= properties.getPassScore()
                 && result.issues().stream().noneMatch(issue -> "ERROR".equals(issue.severity()));
+    }
+
+    private boolean isTransient(ApiException exception) {
+        return "GEMINI_RATE_LIMITED".equals(exception.getCode())
+                || "GEMINI_UNAVAILABLE".equals(exception.getCode());
+    }
+
+    private void waitBeforeRetry(int attempt) {
+        long delay = Math.max(0, properties.getRetryDelayMs()) * attempt;
+        if (delay == 0) return;
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "QUIZ_GENERATION_INTERRUPTED",
+                    "Quiz generation retry was interrupted.");
+        }
     }
 
     private String summarize(QuizValidation.Result result) {

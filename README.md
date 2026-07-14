@@ -1,5 +1,12 @@
 # TRI:READ Backend
 
+## Local Gemini secret
+
+Copy `config/application-secret.example.yml` to
+`config/application-secret.yml`, then put the local Gemini API key in
+`app.quiz-generation.gemini.api-key`. The real secret file is ignored by Git and
+is not packaged into the application JAR. It must never be committed.
+
 Spring Boot REST API for TRI:READ, a weekday reading quiz service.
 
 ## Stack

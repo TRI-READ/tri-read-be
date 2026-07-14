@@ -1,6 +1,8 @@
 spring:
   application:
     name: tri-read-be
+  config:
+    import: optional:file:./config/application-secret.yml
   profiles:
     default: dev
   flyway:
@@ -37,10 +39,11 @@ app:
     max-attempts: ${QUIZ_GENERATION_MAX_ATTEMPTS:3}
     pass-score: ${QUIZ_VALIDATION_PASS_SCORE:90}
     variants-per-date: ${QUIZ_VARIANTS_PER_DATE:3}
+    retry-delay-ms: ${QUIZ_GENERATION_RETRY_DELAY_MS:10000}
     cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     gemini:
       api-key: ${GEMINI_API_KEY:}
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
-      generation-model: ${GEMINI_GENERATION_MODEL:gemini-2.5-flash}
-      validation-model: ${GEMINI_VALIDATION_MODEL:gemini-2.5-flash}
+      generation-model: ${GEMINI_GENERATION_MODEL:gemini-3.1-flash-lite}
+      validation-model: ${GEMINI_VALIDATION_MODEL:gemini-3.1-flash-lite}
       prompt-version: ${QUIZ_PROMPT_VERSION:v1}
