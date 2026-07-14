@@ -44,9 +44,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         if (targetDate == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TARGET_DATE_REQUIRED", "Target date is required.");
         }
-        if (adminQuizService.hasActiveQuiz(targetDate)) {
-            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_ALREADY_EXISTS",
-                    "A draft, reviewed, or published quiz already exists for this date.");
+        int variantLimit = Math.max(1, properties.getVariantsPerDate());
+        if (adminQuizService.countActiveQuizSets(targetDate) >= variantLimit) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_INVENTORY_FULL",
+                    "The quiz variant inventory is already full for this date.");
         }
 
         QuizGenerationData.GenerationLogInsert log = new QuizGenerationData.GenerationLogInsert(

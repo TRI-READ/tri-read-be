@@ -32,7 +32,7 @@ public class QuizService {
         this.clock = clock;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TodayQuizResponse getTodayQuiz(long userId) {
         LocalDate today = LocalDate.now(clock);
         QuizData.QuizSetRow quizSet = findTodayQuiz(userId, today);
@@ -49,6 +49,7 @@ public class QuizService {
         return new TodayQuizResponse(
                 quizSet.quizSetId(),
                 quizSet.challengeDate(),
+                quizSet.variantCode(),
                 quizSet.difficulty(),
                 attempt,
                 content.passages()
@@ -153,6 +154,15 @@ public class QuizService {
 
     private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate today) {
         QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(today, userId);
+        if (quizSet == null) {
+            List<Long> candidates = quizMapper.findPublishedQuizSetIds(today, userId);
+            if (!candidates.isEmpty()) {
+                int assignmentIndex = Math.floorMod(
+                        31 * Long.hashCode(userId) + today.hashCode(), candidates.size());
+                quizMapper.insertAssignment(userId, today, candidates.get(assignmentIndex));
+                quizSet = quizMapper.findTodayQuiz(today, userId);
+            }
+        }
         if (quizSet == null) {
             throw new ApiException(
                     HttpStatus.NOT_FOUND,
@@ -283,6 +293,7 @@ public class QuizService {
     public record TodayQuizResponse(
             long quizSetId,
             LocalDate challengeDate,
+            String variantCode,
             String difficulty,
             AttemptSummary attempt,
             List<PassageResponse> passages

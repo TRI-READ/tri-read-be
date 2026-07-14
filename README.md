@@ -15,7 +15,7 @@ Spring Boot REST API for TRI:READ, a weekday reading quiz service.
 
 ## Domain Baseline
 
-- One daily quiz set has 3 passages.
+- One daily quiz variant has 3 passages, and a date can publish multiple variants.
 - Each passage has 3 multiple-choice questions.
 - A completed attempt stores 1 `quiz_attempts` row and 9 `attempt_answers` rows.
 - Users can join multiple study groups.
@@ -95,6 +95,10 @@ The submission must contain exactly one answer for each of the 9 questions.
 Scoring, attempt persistence, and pending wrong-answer reviews are committed in
 one transaction.
 
+On the first daily quiz request, the user is deterministically assigned one of
+the published A/B/C variants. The assignment is stored and does not change on
+refresh or another login.
+
 ## Study Group API
 
 All endpoints require the authenticated session. State-changing endpoints also
@@ -149,7 +153,7 @@ weekend attempt fills the earliest empty slot in that week. A perfect attempt is
 
 Admin accounts can create a complete quiz as a draft, inspect it, and publish it.
 The server enforces exactly 3 passages, 3 questions per passage, and 4 options
-per question. Only one published quiz is allowed for a challenge date.
+per question. Variants are assigned an A-Z code within each challenge date.
 
 ```text
 GET  /api/admin/quizzes
@@ -171,6 +175,11 @@ independent AI validation pass. A quiz is saved as `REVIEWED` only
 after both validators score at least 90. Failed generations retry up to three
 times, and auto-publishing is disabled by default so an administrator can inspect
 the result.
+
+The daily scheduler maintains three variants for each stocked weekday by
+default. Before calling Gemini, it reschedules the oldest past published set
+that was never assigned to a user. Change the per-date target with
+`QUIZ_VARIANTS_PER_DATE`.
 
 ```text
 POST /api/admin/quiz-generations

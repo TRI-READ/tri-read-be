@@ -3,6 +3,7 @@ package com.triread.api.generation;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -12,7 +13,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Set;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +35,7 @@ class QuizGenerationSchedulerTest {
     void setUp() {
         properties = new QuizGenerationProperties();
         properties.setEnabled(true);
+        properties.setVariantsPerDate(3);
         scheduler = new QuizGenerationScheduler(
                 generationService, adminQuizService, properties, MONDAY_CLOCK);
     }
@@ -49,10 +51,10 @@ class QuizGenerationSchedulerTest {
 
     @Test
     void keepsInventoryWhenAtLeastThreeConsecutiveWeekdaysExist() {
-        stubActiveDates(Set.of(
-                LocalDate.of(2026, 7, 14),
-                LocalDate.of(2026, 7, 15),
-                LocalDate.of(2026, 7, 16)));
+        stubActiveCounts(Map.of(
+                LocalDate.of(2026, 7, 14), 3,
+                LocalDate.of(2026, 7, 15), 3,
+                LocalDate.of(2026, 7, 16), 3));
 
         scheduler.replenishInventory();
 
@@ -61,24 +63,24 @@ class QuizGenerationSchedulerTest {
 
     @Test
     void replenishesMissingInventoryToSevenWeekdays() {
-        stubActiveDates(Set.of(
-                LocalDate.of(2026, 7, 14),
-                LocalDate.of(2026, 7, 15)));
+        stubActiveCounts(Map.of(
+                LocalDate.of(2026, 7, 14), 3,
+                LocalDate.of(2026, 7, 15), 3));
 
         scheduler.replenishInventory();
 
-        verify(generationService).generate(LocalDate.of(2026, 7, 16));
-        verify(generationService).generate(LocalDate.of(2026, 7, 17));
-        verify(generationService).generate(LocalDate.of(2026, 7, 20));
-        verify(generationService).generate(LocalDate.of(2026, 7, 21));
-        verify(generationService).generate(LocalDate.of(2026, 7, 22));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 16));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 17));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 21));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 22));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
     }
 
     @Test
     void continuesAfterOneDateFailsToGenerate() {
-        stubActiveDates(Set.of());
+        stubActiveCounts(Map.of());
         LocalDate failedDate = LocalDate.of(2026, 7, 14);
         doThrow(new IllegalStateException("generation failed"))
                 .when(generationService).generate(failedDate);
@@ -86,11 +88,23 @@ class QuizGenerationSchedulerTest {
         scheduler.replenishInventory();
 
         verify(generationService).generate(failedDate);
-        verify(generationService).generate(LocalDate.of(2026, 7, 22));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 22));
     }
 
-    private void stubActiveDates(Set<LocalDate> activeDates) {
-        when(adminQuizService.hasActiveQuiz(any()))
-                .thenAnswer(invocation -> activeDates.contains(invocation.getArgument(0)));
+    @Test
+    void reusesUnassignedPublishedSetsBeforeGenerating() {
+        properties.setVariantsPerDate(1);
+        stubActiveCounts(Map.of());
+        when(adminQuizService.recycleUnusedPublishedQuiz(any())).thenReturn(true);
+
+        scheduler.replenishInventory();
+
+        verify(adminQuizService).recycleUnusedPublishedQuiz(LocalDate.of(2026, 7, 14));
+        verify(generationService, never()).generate(any());
+    }
+
+    private void stubActiveCounts(Map<LocalDate, Integer> activeCounts) {
+        when(adminQuizService.countActiveQuizSets(any()))
+                .thenAnswer(invocation -> activeCounts.getOrDefault(invocation.getArgument(0), 0));
     }
 }

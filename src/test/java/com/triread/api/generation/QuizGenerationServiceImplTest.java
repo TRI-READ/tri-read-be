@@ -103,6 +103,18 @@ class QuizGenerationServiceImplTest {
     }
 
     @Test
+    void rejectsGenerationWhenDateAlreadyHasConfiguredVariantCount() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        properties.setVariantsPerDate(3);
+        when(adminQuizService.countActiveQuizSets(date)).thenReturn(3);
+
+        assertThatThrownBy(() -> service.generate(date))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));
+    }
+
+    @Test
     void returnsGenerationLogWithStructuredValidationIssues() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
                 42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
@@ -133,6 +145,6 @@ class QuizGenerationServiceImplTest {
 
     private AdminQuizService.QuizDetail detail(long quizId, LocalDate date, String status) {
         return new AdminQuizService.QuizDetail(new AdminQuizService.QuizSummary(
-                quizId, date, status, NOW, null), List.of());
+                quizId, date, "A", status, NOW, null), List.of());
     }
 }

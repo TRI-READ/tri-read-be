@@ -10,6 +10,7 @@ public class QuizGenerationProperties {
     private boolean autoPublish;
     private int maxAttempts = 3;
     private int passScore = 90;
+    private int variantsPerDate = 3;
     private String cron = "0 10 3 * * *";
     private final Gemini gemini = new Gemini();
 
@@ -21,6 +22,8 @@ public class QuizGenerationProperties {
     public void setMaxAttempts(int maxAttempts) { this.maxAttempts = maxAttempts; }
     public int getPassScore() { return passScore; }
     public void setPassScore(int passScore) { this.passScore = passScore; }
+    public int getVariantsPerDate() { return variantsPerDate; }
+    public void setVariantsPerDate(int variantsPerDate) { this.variantsPerDate = variantsPerDate; }
     public String getCron() { return cron; }
     public void setCron(String cron) { this.cron = cron; }
     public Gemini getGemini() { return gemini; }

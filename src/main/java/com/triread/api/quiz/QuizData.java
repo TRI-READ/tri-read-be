@@ -11,6 +11,7 @@ public final class QuizData {
     public record QuizSetRow(
             long quizSetId,
             LocalDate challengeDate,
+            String variantCode,
             String difficulty,
             Long attemptId,
             Integer attemptScore,

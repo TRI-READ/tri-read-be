@@ -4,9 +4,9 @@ import com.triread.api.admin.AdminQuizService;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,26 +41,33 @@ public class QuizGenerationScheduler {
         if (!properties.isEnabled()) return;
 
         List<LocalDate> targetDates = upcomingWeekdays(LocalDate.now(clock));
-        Set<LocalDate> activeDates = new HashSet<>();
+        int variantsPerDate = Math.max(1, properties.getVariantsPerDate());
+        Map<LocalDate, Integer> activeCounts = new HashMap<>();
         for (LocalDate targetDate : targetDates) {
-            if (adminQuizService.hasActiveQuiz(targetDate)) {
-                activeDates.add(targetDate);
-            }
+            activeCounts.put(targetDate, adminQuizService.countActiveQuizSets(targetDate));
         }
 
         int consecutiveInventoryDays = 0;
         for (LocalDate targetDate : targetDates) {
-            if (!activeDates.contains(targetDate)) break;
+            if (activeCounts.get(targetDate) < variantsPerDate) break;
             consecutiveInventoryDays++;
         }
         if (consecutiveInventoryDays >= MINIMUM_INVENTORY_DAYS) return;
 
         for (LocalDate targetDate : targetDates) {
-            if (activeDates.contains(targetDate)) continue;
-            try {
-                generationService.generate(targetDate);
-            } catch (RuntimeException exception) {
-                log.error("Scheduled quiz generation failed for {}", targetDate, exception);
+            int activeCount = activeCounts.get(targetDate);
+            while (activeCount < variantsPerDate) {
+                if (adminQuizService.recycleUnusedPublishedQuiz(targetDate)) {
+                    activeCount++;
+                    continue;
+                }
+                try {
+                    generationService.generate(targetDate);
+                    activeCount++;
+                } catch (RuntimeException exception) {
+                    log.error("Scheduled quiz generation failed for {}", targetDate, exception);
+                    break;
+                }
             }
         }
     }
