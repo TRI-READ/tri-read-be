@@ -10,8 +10,10 @@ public class QuizGenerationProperties {
     private boolean autoPublish;
     private int maxAttempts = 3;
     private int passScore = 90;
-    private String cron = "0 0 3 * * SUN";
-    private final OpenAi openai = new OpenAi();
+    private int variantsPerDate = 3;
+    private long retryDelayMs = 10_000;
+    private String cron = "0 10 3 * * *";
+    private final Gemini gemini = new Gemini();
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -21,15 +23,19 @@ public class QuizGenerationProperties {
     public void setMaxAttempts(int maxAttempts) { this.maxAttempts = maxAttempts; }
     public int getPassScore() { return passScore; }
     public void setPassScore(int passScore) { this.passScore = passScore; }
+    public int getVariantsPerDate() { return variantsPerDate; }
+    public void setVariantsPerDate(int variantsPerDate) { this.variantsPerDate = variantsPerDate; }
+    public long getRetryDelayMs() { return retryDelayMs; }
+    public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }
     public void setCron(String cron) { this.cron = cron; }
-    public OpenAi getOpenai() { return openai; }
+    public Gemini getGemini() { return gemini; }
 
-    public static class OpenAi {
+    public static class Gemini {
         private String apiKey = "";
-        private String baseUrl = "https://api.openai.com";
-        private String generationModel = "gpt-5.4";
-        private String validationModel = "gpt-5.4-mini";
+        private String baseUrl = "https://generativelanguage.googleapis.com";
+        private String generationModel = "gemini-3.1-flash-lite";
+        private String validationModel = "gemini-3.1-flash-lite";
         private String promptVersion = "v1";
 
         public String getApiKey() { return apiKey; }

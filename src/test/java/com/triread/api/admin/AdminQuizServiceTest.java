@@ -1,5 +1,6 @@
 package com.triread.api.admin;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -46,27 +47,24 @@ class AdminQuizServiceTest {
     }
 
     @Test
-    void publishRejectsDateThatAlreadyHasPublishedQuiz() {
+    void publishAllowsAnotherVariantForTheSameDate() {
         long quizId = 11L;
         LocalDate date = LocalDate.of(2026, 7, 12);
         when(adminQuizMapper.findQuiz(quizId)).thenReturn(
-                new AdminQuizData.QuizRow(quizId, date, "DRAFT", Instant.now(), null)
+                new AdminQuizData.QuizRow(quizId, date, "B", "DRAFT", Instant.now(), null)
         );
-        when(adminQuizMapper.countPublishedByDate(date)).thenReturn(1);
+        when(adminQuizMapper.publish(org.mockito.ArgumentMatchers.eq(quizId), any())).thenReturn(1);
 
-        assertThatThrownBy(() -> service.publish(quizId))
-                .isInstanceOfSatisfying(ApiException.class, exception ->
-                        org.assertj.core.api.Assertions.assertThat(exception.getCode())
-                                .isEqualTo("QUIZ_DATE_ALREADY_PUBLISHED"));
-        verify(adminQuizMapper, never()).publish(
-                org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any());
+        service.publish(quizId);
+
+        verify(adminQuizMapper).publish(org.mockito.ArgumentMatchers.eq(quizId), any());
     }
 
     @Test
     void deleteRejectsPublishedQuizWithoutRemovingContent() {
         long quizId = 12L;
         when(adminQuizMapper.findQuiz(quizId)).thenReturn(new AdminQuizData.QuizRow(
-                quizId, LocalDate.of(2026, 7, 12), "PUBLISHED", Instant.now(), Instant.now()
+                quizId, LocalDate.of(2026, 7, 12), "A", "PUBLISHED", Instant.now(), Instant.now()
         ));
 
         assertThatThrownBy(() -> service.deleteDraft(quizId))
@@ -81,12 +79,26 @@ class AdminQuizServiceTest {
     void deletingReviewedQuizInvalidatesItsGenerationLog() {
         long quizId = 13L;
         when(adminQuizMapper.findQuiz(quizId)).thenReturn(new AdminQuizData.QuizRow(
-                quizId, LocalDate.of(2026, 7, 13), "REVIEWED", Instant.now(), null));
+                quizId, LocalDate.of(2026, 7, 13), "A", "REVIEWED", Instant.now(), null));
         when(adminQuizMapper.deleteDraft(quizId)).thenReturn(1);
 
         service.deleteDraft(quizId);
 
         verify(adminQuizMapper).invalidateGeneration(org.mockito.ArgumentMatchers.eq(quizId), any());
         verify(adminQuizMapper).deleteDraft(quizId);
+    }
+
+    @Test
+    void recyclesUnusedPublishedQuizIntoNextVariantCode() {
+        LocalDate targetDate = LocalDate.of(2026, 7, 20);
+        when(adminQuizMapper.findActiveVariantCodesByDate(targetDate)).thenReturn(List.of("A"));
+        when(adminQuizMapper.rescheduleOldestUnassignedPublishedQuiz(
+                LocalDate.of(2026, 7, 12), targetDate, "B")).thenReturn(1);
+
+        boolean recycled = service.recycleUnusedPublishedQuiz(targetDate);
+
+        assertThat(recycled).isTrue();
+        verify(adminQuizMapper).rescheduleOldestUnassignedPublishedQuiz(
+                LocalDate.of(2026, 7, 12), targetDate, "B");
     }
 }

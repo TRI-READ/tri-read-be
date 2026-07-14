@@ -7,17 +7,41 @@
     <select id="findTodayQuiz" resultType="com.triread.api.quiz.QuizData$QuizSetRow">
         SELECT qs.id AS quiz_set_id,
                qs.challenge_date,
+               qs.variant_code,
                qs.difficulty,
                qa.id AS attempt_id,
                qa.score AS attempt_score,
                qa.completed_at
-        FROM quiz_sets qs
+        FROM user_quiz_assignments assignment
+        JOIN quiz_sets qs
+          ON qs.id = assignment.quiz_set_id
+         AND qs.challenge_date = assignment.challenge_date
         LEFT JOIN quiz_attempts qa
                ON qa.quiz_set_id = qs.id
               AND qa.user_id = #{userId}
-        WHERE qs.challenge_date = #{challengeDate}
+        WHERE assignment.challenge_date = #{challengeDate}
+          AND assignment.user_id = #{userId}
           AND qs.status = 'PUBLISHED'
     </select>
+
+    <select id="findPublishedQuizSetIds" resultType="long">
+        SELECT qs.id
+        FROM quiz_sets qs
+        WHERE qs.challenge_date = #{challengeDate}
+          AND qs.status = 'PUBLISHED'
+          AND NOT EXISTS (
+              SELECT 1 FROM user_quiz_assignments previous
+              WHERE previous.user_id = #{userId}
+                AND previous.quiz_set_id = qs.id
+          )
+        ORDER BY qs.variant_code, qs.id
+    </select>
+
+    <insert id="insertAssignment">
+        INSERT INTO user_quiz_assignments (user_id, challenge_date, quiz_set_id)
+        VALUES (#{userId}, #{challengeDate}, #{quizSetId})
+        ON CONFLICT (user_id, challenge_date) DO NOTHING
+    </insert>
 
     <select id="findPassages" resultType="com.triread.api.quiz.QuizData$PassageRow">
         SELECT id AS passage_id,

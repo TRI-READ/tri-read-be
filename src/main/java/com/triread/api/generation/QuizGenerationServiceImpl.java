@@ -15,8 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuizGenerationServiceImpl implements QuizGenerationService {
-    private static final String PROVIDER = "OPENAI";
-
     private final QuizGenerationMapper mapper;
     private final AdminQuizService adminQuizService;
     private final RuleBasedQuizValidator ruleValidator;
@@ -46,13 +44,14 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         if (targetDate == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TARGET_DATE_REQUIRED", "Target date is required.");
         }
-        if (adminQuizService.hasActiveQuiz(targetDate)) {
-            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_ALREADY_EXISTS",
-                    "A draft, reviewed, or published quiz already exists for this date.");
+        int variantLimit = Math.max(1, properties.getVariantsPerDate());
+        if (adminQuizService.countActiveQuizSets(targetDate) >= variantLimit) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_INVENTORY_FULL",
+                    "The quiz variant inventory is already full for this date.");
         }
 
         QuizGenerationData.GenerationLogInsert log = new QuizGenerationData.GenerationLogInsert(
-                targetDate, PROVIDER, aiGateway.generationModel(), aiGateway.promptVersion(), "GENERATING");
+                targetDate, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion(), "GENERATING");
         mapper.insertLog(log);
         long logId = log.getId();
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
@@ -90,7 +89,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 }
 
                 AdminQuizService.QuizDetail quiz = adminQuizService.createReviewedDraft(
-                        generated, PROVIDER, aiGateway.generationModel(), aiGateway.promptVersion());
+                        generated, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion());
                 long quizSetId = quiz.quiz().quizSetId();
                 persistedQuizId = quizSetId;
                 saveValidation(logId, quizSetId, attempt, "RULE", ruleResult);
@@ -109,11 +108,12 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                             null, latestRaw, latestError, clock.instant());
                     throw exception;
                 }
-                boolean configurationError = "OPENAI_API_KEY_MISSING".equals(exception.getCode());
+                boolean configurationError = exception.getCode().endsWith("_API_KEY_MISSING");
                 boolean finalAttempt = attempt == maxAttempts || configurationError;
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
                         null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
                 if (configurationError) throw exception;
+                if (!finalAttempt && isTransient(exception)) waitBeforeRetry(attempt);
             } catch (RuntimeException exception) {
                 latestError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
                 if (persistedQuizId != null) {
@@ -134,6 +134,23 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private boolean passes(QuizValidation.Result result) {
         return result.passed() && result.score() >= properties.getPassScore()
                 && result.issues().stream().noneMatch(issue -> "ERROR".equals(issue.severity()));
+    }
+
+    private boolean isTransient(ApiException exception) {
+        return "GEMINI_RATE_LIMITED".equals(exception.getCode())
+                || "GEMINI_UNAVAILABLE".equals(exception.getCode());
+    }
+
+    private void waitBeforeRetry(int attempt) {
+        long delay = Math.max(0, properties.getRetryDelayMs()) * attempt;
+        if (delay == 0) return;
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "QUIZ_GENERATION_INTERRUPTED",
+                    "Quiz generation retry was interrupted.");
+        }
     }
 
     private String summarize(QuizValidation.Result result) {

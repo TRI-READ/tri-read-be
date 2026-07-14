@@ -7,8 +7,10 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,7 +66,8 @@ public class AdminQuizService {
     @Transactional
     public QuizDetail createDraft(CreateQuiz command) {
         validate(command);
-        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(command.challengeDate());
+        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
+                command.challengeDate(), nextVariantCode(command.challengeDate()));
         adminQuizMapper.insertQuiz(quiz);
         writeContent(quiz.getId(), command);
         return getQuiz(quiz.getId());
@@ -74,7 +77,8 @@ public class AdminQuizService {
     public QuizDetail createReviewedDraft(CreateQuiz command, String aiProvider,
                                           String aiModel, String promptVersion) {
         validate(command);
-        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(command.challengeDate());
+        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
+                command.challengeDate(), nextVariantCode(command.challengeDate()));
         adminQuizMapper.insertQuiz(quiz);
         writeContent(quiz.getId(), command);
         if (adminQuizMapper.markReviewed(quiz.getId(), aiProvider, aiModel, promptVersion) != 1) {
@@ -85,8 +89,15 @@ public class AdminQuizService {
     }
 
     @Transactional(readOnly = true)
-    public boolean hasActiveQuiz(LocalDate challengeDate) {
-        return adminQuizMapper.countActiveByDate(challengeDate) > 0;
+    public int countActiveQuizSets(LocalDate challengeDate) {
+        return adminQuizMapper.countActiveByDate(challengeDate);
+    }
+
+    @Transactional
+    public boolean recycleUnusedPublishedQuiz(LocalDate targetDate) {
+        String variantCode = nextVariantCode(targetDate);
+        return adminQuizMapper.rescheduleOldestUnassignedPublishedQuiz(
+                LocalDate.now(clock), targetDate, variantCode) == 1;
     }
 
     @Transactional
@@ -100,7 +111,10 @@ public class AdminQuizService {
         adminQuizMapper.deleteOptions(quizSetId);
         adminQuizMapper.deleteQuestions(quizSetId);
         adminQuizMapper.deletePassages(quizSetId);
-        adminQuizMapper.updateDraftDate(quizSetId, command.challengeDate());
+        String variantCode = quiz.challengeDate().equals(command.challengeDate())
+                ? quiz.variantCode()
+                : nextVariantCode(command.challengeDate());
+        adminQuizMapper.updateDraftDate(quizSetId, command.challengeDate(), variantCode);
         writeContent(quizSetId, command);
         return getQuiz(quizSetId);
     }
@@ -155,10 +169,6 @@ public class AdminQuizService {
     public QuizDetail publish(long quizSetId) {
         AdminQuizData.QuizRow quiz = requireQuiz(quizSetId);
         if ("PUBLISHED".equals(quiz.status())) return getQuiz(quizSetId);
-        if (adminQuizMapper.countPublishedByDate(quiz.challengeDate()) > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_ALREADY_PUBLISHED",
-                    "A quiz is already published for this date.");
-        }
         if (adminQuizMapper.publish(quizSetId, clock.instant()) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_PUBLISHED",
                     "Only a draft or reviewed quiz can be published.");
@@ -183,6 +193,17 @@ public class AdminQuizService {
         }
     }
 
+    private String nextVariantCode(LocalDate challengeDate) {
+        Set<String> activeCodes = new HashSet<>(
+                adminQuizMapper.findActiveVariantCodesByDate(challengeDate));
+        for (char code = 'A'; code <= 'Z'; code++) {
+            String candidate = String.valueOf(code);
+            if (!activeCodes.contains(candidate)) return candidate;
+        }
+        throw new ApiException(HttpStatus.CONFLICT, "QUIZ_VARIANTS_EXHAUSTED",
+                "No more quiz variants can be created for this date.");
+    }
+
     private AdminQuizData.QuizRow requireQuiz(long quizSetId) {
         AdminQuizData.QuizRow row = adminQuizMapper.findQuiz(quizSetId);
         if (row == null) throw new ApiException(HttpStatus.NOT_FOUND, "QUIZ_NOT_FOUND", "The quiz was not found.");
@@ -203,8 +224,13 @@ public class AdminQuizService {
     public record CreateQuiz(LocalDate challengeDate, List<CreatePassage> passages) {}
     public record CreatePassage(String title, String topic, String content, List<CreateQuestion> questions) {}
     public record CreateQuestion(String content, List<String> options, int correctOptionPosition, String explanation, String evidence) {}
-    public record QuizSummary(long quizSetId, LocalDate challengeDate, String status, java.time.Instant createdAt, java.time.Instant publishedAt) {
-        static QuizSummary from(AdminQuizData.QuizRow row) { return new QuizSummary(row.quizSetId(), row.challengeDate(), row.status(), row.createdAt(), row.publishedAt()); }
+    public record QuizSummary(long quizSetId, LocalDate challengeDate, String variantCode,
+                              String status, java.time.Instant createdAt,
+                              java.time.Instant publishedAt) {
+        static QuizSummary from(AdminQuizData.QuizRow row) {
+            return new QuizSummary(row.quizSetId(), row.challengeDate(), row.variantCode(),
+                    row.status(), row.createdAt(), row.publishedAt());
+        }
     }
     public record QuizDetail(QuizSummary quiz, List<PassageDetail> passages) {}
     public record PassageDetail(long passageId, int position, String title, String topic, String content, List<QuestionDetail> questions) {}

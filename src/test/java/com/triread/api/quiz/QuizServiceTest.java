@@ -72,6 +72,7 @@ class QuizServiceTest {
                 new QuizData.QuizSetRow(
                         QUIZ_SET_ID,
                         TODAY,
+                        "A",
                         "HIGH_SCHOOL_GRADE_3",
                         91L,
                         8,
@@ -85,6 +86,26 @@ class QuizServiceTest {
         assertThat(result.attempt()).isEqualTo(
                 new QuizService.AttemptSummary(91L, 8, NOW)
         );
+    }
+
+    @Test
+    void assignsOnePublishedVariantOnFirstVisit() {
+        QuizData.QuizSetRow assigned = new QuizData.QuizSetRow(
+                QUIZ_SET_ID, TODAY, "B", "HIGH_SCHOOL_GRADE_3",
+                null, null, null);
+        when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(null, assigned);
+        when(quizMapper.findPublishedQuizSetIds(TODAY, USER_ID))
+                .thenReturn(List.of(16L, QUIZ_SET_ID, 18L));
+        givenCompleteContent();
+
+        QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
+
+        assertThat(result.variantCode()).isEqualTo("B");
+        verify(quizMapper).insertAssignment(
+                org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.eq(TODAY),
+                org.mockito.ArgumentMatchers.longThat(id ->
+                        id == 16L || id == QUIZ_SET_ID || id == 18L));
     }
 
     @Test
@@ -148,6 +169,7 @@ class QuizServiceTest {
                 new QuizData.QuizSetRow(
                         QUIZ_SET_ID,
                         TODAY,
+                        "A",
                         "HIGH_SCHOOL_GRADE_3",
                         91L,
                         9,
@@ -184,6 +206,7 @@ class QuizServiceTest {
                 new QuizData.QuizSetRow(
                         QUIZ_SET_ID,
                         TODAY,
+                        "A",
                         "HIGH_SCHOOL_GRADE_3",
                         null,
                         null,

@@ -44,9 +44,11 @@ class QuizGenerationServiceImplTest {
         properties = new QuizGenerationProperties();
         properties.setMaxAttempts(3);
         properties.setPassScore(90);
+        properties.setRetryDelayMs(0);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 aiGateway, properties, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
+        lenient().when(aiGateway.provider()).thenReturn("GEMINI");
         lenient().when(aiGateway.promptVersion()).thenReturn("v1");
         lenient().doAnswer(invocation -> {
             QuizGenerationData.GenerationLogInsert log = invocation.getArgument(0);
@@ -66,7 +68,7 @@ class QuizGenerationServiceImplTest {
         when(aiGateway.generate(date)).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(ruleResult);
         when(aiGateway.validate(generated)).thenReturn(aiResult);
-        when(adminQuizService.createReviewedDraft(generated, "OPENAI", "generation-model", "v1"))
+        when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model", "v1"))
                 .thenReturn(detail);
 
         QuizGenerationService.GenerationResult result = service.generate(date);
@@ -102,9 +104,42 @@ class QuizGenerationServiceImplTest {
     }
 
     @Test
+    void retriesTransientGeminiFailure() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
+
+        when(aiGateway.generate(date))
+                .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
+                        "GEMINI_UNAVAILABLE", "Temporarily unavailable"))
+                .thenReturn(generated);
+        when(ruleValidator.validate(generated)).thenReturn(passed);
+        when(aiGateway.validate(generated)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+                .thenReturn(detail(9L, date, "REVIEWED"));
+
+        QuizGenerationService.GenerationResult result = service.generate(date);
+
+        assertThat(result.attemptCount()).isEqualTo(2);
+        verify(aiGateway, times(2)).generate(date);
+    }
+
+    @Test
+    void rejectsGenerationWhenDateAlreadyHasConfiguredVariantCount() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        properties.setVariantsPerDate(3);
+        when(adminQuizService.countActiveQuizSets(date)).thenReturn(3);
+
+        assertThatThrownBy(() -> service.generate(date))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));
+    }
+
+    @Test
     void returnsGenerationLogWithStructuredValidationIssues() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
-                42L, 7L, LocalDate.of(2026, 7, 20), "OPENAI", "generation-model", "v1",
+                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
                 "READY", 1, 95, null, NOW, NOW, NOW);
         when(mapper.findLog(42L)).thenReturn(log);
         when(mapper.findValidationResults(42L)).thenReturn(List.of(
@@ -132,6 +167,6 @@ class QuizGenerationServiceImplTest {
 
     private AdminQuizService.QuizDetail detail(long quizId, LocalDate date, String status) {
         return new AdminQuizService.QuizDetail(new AdminQuizService.QuizSummary(
-                quizId, date, status, NOW, null), List.of());
+                quizId, date, "A", status, NOW, null), List.of());
     }
 }

@@ -13,6 +13,15 @@ public interface QuizMapper {
             @Param("userId") long userId
     );
 
+    List<Long> findPublishedQuizSetIds(
+            @Param("challengeDate") LocalDate challengeDate,
+            @Param("userId") long userId
+    );
+
+    int insertAssignment(@Param("userId") long userId,
+                         @Param("challengeDate") LocalDate challengeDate,
+                         @Param("quizSetId") long quizSetId);
+
     List<QuizData.PassageRow> findPassages(long quizSetId);
 
     List<QuizData.QuestionRow> findQuestions(long quizSetId);
