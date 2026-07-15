@@ -16,6 +16,7 @@ public final class QuizData {
             Long attemptId,
             Integer attemptScore,
             Integer attemptTotalQuestions,
+            Long attemptPassageId,
             Instant completedAt
     ) {
     }

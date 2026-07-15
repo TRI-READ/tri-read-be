@@ -77,6 +77,7 @@ class QuizServiceTest {
                         91L,
                         3,
                         3,
+                        101L,
                         NOW
                 )
         );
@@ -85,7 +86,7 @@ class QuizServiceTest {
         QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
 
         assertThat(result.attempt()).isEqualTo(
-                new QuizService.AttemptSummary(91L, 3, 3, NOW)
+                new QuizService.AttemptSummary(91L, 3, 3, 101L, NOW)
         );
     }
 
@@ -93,7 +94,7 @@ class QuizServiceTest {
     void assignsOnePublishedVariantOnFirstVisit() {
         QuizData.QuizSetRow assigned = new QuizData.QuizSetRow(
                 QUIZ_SET_ID, TODAY, "B", "HIGH_SCHOOL_GRADE_3",
-                null, null, null, null);
+                null, null, null, null, null);
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(null, assigned);
         when(quizMapper.findPublishedQuizSetIds(TODAY, USER_ID))
                 .thenReturn(List.of(16L, QUIZ_SET_ID, 18L));
@@ -175,6 +176,7 @@ class QuizServiceTest {
                         91L,
                         9,
                         9,
+                        null,
                         NOW
                 )
         );
@@ -230,6 +232,7 @@ class QuizServiceTest {
                         TODAY,
                         "A",
                         "HIGH_SCHOOL_GRADE_3",
+                        null,
                         null,
                         null,
                         null,

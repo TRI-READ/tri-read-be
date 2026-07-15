@@ -16,6 +16,16 @@
                    FROM attempt_answers aa
                    WHERE aa.attempt_id = qa.id
                ) AS attempt_total_questions,
+               (
+                   SELECT CASE
+                              WHEN COUNT(DISTINCT q.passage_id) = 1
+                              THEN MIN(q.passage_id)
+                              ELSE NULL
+                          END
+                   FROM attempt_answers aa
+                   JOIN questions q ON q.id = aa.question_id
+                   WHERE aa.attempt_id = qa.id
+               ) AS attempt_passage_id,
                qa.completed_at
         FROM user_quiz_assignments assignment
         JOIN quiz_sets qs

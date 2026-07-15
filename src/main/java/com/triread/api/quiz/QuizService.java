@@ -44,6 +44,7 @@ public class QuizService {
                         quizSet.attemptId(),
                         quizSet.attemptScore(),
                         quizSet.attemptTotalQuestions(),
+                        quizSet.attemptPassageId(),
                         quizSet.completedAt()
                 );
 
@@ -328,6 +329,7 @@ public class QuizService {
             long attemptId,
             int score,
             int totalQuestions,
+            Long passageId,
             Instant completedAt
     ) {
     }
