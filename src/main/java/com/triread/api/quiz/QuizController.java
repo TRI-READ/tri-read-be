@@ -53,7 +53,7 @@ public class QuizController {
 
     public record SubmitAttemptRequest(
             @NotNull
-            @Size(min = 9, max = 9)
+            @Size(min = 3, max = 3)
             List<@Valid AnswerRequest> answers
     ) {
     }

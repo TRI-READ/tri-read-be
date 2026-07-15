@@ -59,6 +59,37 @@ public class OrbitServiceImpl implements OrbitService {
         return new OrbitResponse(period, startDate, endDate, completedDays, fullyLitDays, days);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public StreakResponse getStreak(long userId) {
+        LocalDate today = LocalDate.now(clock);
+        LocalDate firstAttemptDate = orbitMapper.findFirstAttemptDate(userId);
+        if (firstAttemptDate == null) {
+            return new StreakResponse(0, false);
+        }
+
+        LocalDate queryStart = weekMonday(firstAttemptDate);
+        LocalDate queryEnd = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
+        List<OrbitData.OrbitAttemptRow> attempts = orbitMapper.findAttempts(
+                userId, queryStart, queryEnd
+        );
+        Map<LocalDate, OrbitData.OrbitAttemptRow> assignedAttempts = assignWeekendAttempts(
+                queryStart, queryEnd, attempts
+        );
+        boolean completedToday = attempts.stream()
+                .anyMatch(attempt -> today.equals(attempt.challengeDate()));
+        LocalDate cursor = isWeekday(today) && assignedAttempts.containsKey(today)
+                ? today
+                : previousWeekday(today);
+        int currentStreak = 0;
+        while (assignedAttempts.containsKey(cursor)) {
+            currentStreak++;
+            cursor = previousWeekday(cursor);
+        }
+
+        return new StreakResponse(currentStreak, completedToday);
+    }
+
     private OrbitDay toOrbitDay(LocalDate date, OrbitData.OrbitAttemptRow attempt) {
         if (attempt == null) {
             return new OrbitDay(date, null, false, "EMPTY", 0, null, 0, 0);
@@ -106,6 +137,14 @@ public class OrbitServiceImpl implements OrbitService {
 
     private LocalDate weekMonday(LocalDate date) {
         return date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+    }
+
+    private LocalDate previousWeekday(LocalDate date) {
+        LocalDate previous = date.minusDays(1);
+        while (!isWeekday(previous)) {
+            previous = previous.minusDays(1);
+        }
+        return previous;
     }
 
     private String normalizePeriod(String rawPeriod) {

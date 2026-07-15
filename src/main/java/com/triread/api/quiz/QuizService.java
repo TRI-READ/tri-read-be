@@ -43,6 +43,7 @@ public class QuizService {
                 : new AttemptSummary(
                         quizSet.attemptId(),
                         quizSet.attemptScore(),
+                        quizSet.attemptTotalQuestions(),
                         quizSet.completedAt()
                 );
 
@@ -81,13 +82,19 @@ public class QuizService {
             throw invalidQuizContentException();
         }
 
-        Map<Long, SubmittedAnswer> answersByQuestion =
-                validateSubmittedAnswers(submittedAnswers, content);
+        ValidatedSubmission submission = validateSubmittedAnswers(submittedAnswers, content);
+        Map<Long, SubmittedAnswer> answersByQuestion = submission.answersByQuestion();
+        List<QuizData.AnswerKeyRow> selectedAnswerKeys = answerKeys.stream()
+                .filter(answerKey -> answersByQuestion.containsKey(answerKey.questionId()))
+                .toList();
+        if (selectedAnswerKeys.size() != QUESTIONS_PER_PASSAGE) {
+            throw invalidAnswersException();
+        }
         List<QuizData.AttemptAnswerInsert> answersToInsert = new ArrayList<>();
         List<QuestionResult> questionResults = new ArrayList<>();
         int score = 0;
 
-        for (QuizData.AnswerKeyRow answerKey : answerKeys) {
+        for (QuizData.AnswerKeyRow answerKey : selectedAnswerKeys) {
             SubmittedAnswer submittedAnswer = answersByQuestion.get(answerKey.questionId());
             boolean correct = submittedAnswer.selectedOptionId() == answerKey.correctOptionId();
             if (correct) {
@@ -145,8 +152,8 @@ public class QuizService {
                 attempt.getId(),
                 quizSetId,
                 score,
-                TOTAL_QUESTIONS,
-                TOTAL_QUESTIONS - score,
+                QUESTIONS_PER_PASSAGE,
+                QUESTIONS_PER_PASSAGE - score,
                 completedAt,
                 questionResults
         );
@@ -198,6 +205,7 @@ public class QuizService {
         }
 
         Map<Long, List<QuestionResponse>> questionsByPassage = new LinkedHashMap<>();
+        Map<Long, Long> passageIdByQuestion = new HashMap<>();
         for (QuizData.QuestionRow question : questions) {
             List<OptionResponse> questionOptions = optionsByQuestion.get(question.questionId());
             if (questionOptions == null || questionOptions.size() != OPTIONS_PER_QUESTION) {
@@ -211,6 +219,7 @@ public class QuizService {
                             question.content(),
                             questionOptions
                     ));
+            passageIdByQuestion.put(question.questionId(), question.passageId());
         }
 
         List<PassageResponse> passageResponses = new ArrayList<>();
@@ -230,38 +239,46 @@ public class QuizService {
             ));
         }
 
-        return new QuizContent(passageResponses, optionIdsByQuestion);
+        return new QuizContent(passageResponses, optionIdsByQuestion, passageIdByQuestion);
     }
 
-    private Map<Long, SubmittedAnswer> validateSubmittedAnswers(
+    private ValidatedSubmission validateSubmittedAnswers(
             List<SubmittedAnswer> submittedAnswers,
             QuizContent content
     ) {
-        if (submittedAnswers == null || submittedAnswers.size() != TOTAL_QUESTIONS) {
+        if (submittedAnswers == null || submittedAnswers.size() != QUESTIONS_PER_PASSAGE) {
             throw invalidAnswersException();
         }
 
         Map<Long, SubmittedAnswer> answersByQuestion = new HashMap<>();
+        Long selectedPassageId = null;
         for (SubmittedAnswer answer : submittedAnswers) {
             Set<Long> optionIds = content.optionIdsByQuestion().get(answer.questionId());
+            Long passageId = content.passageIdByQuestion().get(answer.questionId());
             if (optionIds == null
+                    || passageId == null
                     || !optionIds.contains(answer.selectedOptionId())
                     || answersByQuestion.putIfAbsent(answer.questionId(), answer) != null) {
                 throw invalidAnswersException();
             }
+            if (selectedPassageId == null) {
+                selectedPassageId = passageId;
+            } else if (!selectedPassageId.equals(passageId)) {
+                throw invalidAnswersException();
+            }
         }
 
-        if (answersByQuestion.size() != TOTAL_QUESTIONS) {
+        if (answersByQuestion.size() != QUESTIONS_PER_PASSAGE || selectedPassageId == null) {
             throw invalidAnswersException();
         }
-        return answersByQuestion;
+        return new ValidatedSubmission(answersByQuestion, selectedPassageId);
     }
 
     private ApiException invalidAnswersException() {
         return new ApiException(
                 HttpStatus.BAD_REQUEST,
                 "INVALID_QUIZ_ANSWERS",
-                "Exactly one valid answer is required for every question."
+                "Exactly three valid answers from one passage are required."
         );
     }
 
@@ -283,7 +300,14 @@ public class QuizService {
 
     private record QuizContent(
             List<PassageResponse> passages,
-            Map<Long, Set<Long>> optionIdsByQuestion
+            Map<Long, Set<Long>> optionIdsByQuestion,
+            Map<Long, Long> passageIdByQuestion
+    ) {
+    }
+
+    private record ValidatedSubmission(
+            Map<Long, SubmittedAnswer> answersByQuestion,
+            long passageId
     ) {
     }
 
@@ -303,6 +327,7 @@ public class QuizService {
     public record AttemptSummary(
             long attemptId,
             int score,
+            int totalQuestions,
             Instant completedAt
     ) {
     }

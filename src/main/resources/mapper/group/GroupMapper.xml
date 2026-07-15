@@ -98,6 +98,11 @@
             SELECT qa.id AS attempt_id,
                    qa.user_id,
                    qa.score,
+                   (
+                       SELECT COUNT(*)
+                       FROM attempt_answers aa
+                       WHERE aa.attempt_id = qa.id
+                   ) AS total_questions,
                    qs.challenge_date,
                    ROW_NUMBER() OVER (
                        PARTITION BY qa.user_id
@@ -118,9 +123,13 @@
             SELECT credited.user_id,
                    COUNT(*) AS completed_days,
                    COALESCE(SUM(credited.score), 0) AS total_correct,
-                   COUNT(*) FILTER (WHERE credited.score = 9) AS perfect_count,
                    COUNT(*) FILTER (
-                       WHERE credited.score = 9
+                       WHERE credited.total_questions > 0
+                         AND credited.score = credited.total_questions
+                   ) AS perfect_count,
+                   COUNT(*) FILTER (
+                       WHERE (credited.total_questions > 0
+                              AND credited.score = credited.total_questions)
                           OR NOT EXISTS (
                               SELECT 1
                               FROM answer_reviews pending_review

@@ -15,6 +15,7 @@ public final class QuizData {
             String difficulty,
             Long attemptId,
             Integer attemptScore,
+            Integer attemptTotalQuestions,
             Instant completedAt
     ) {
     }

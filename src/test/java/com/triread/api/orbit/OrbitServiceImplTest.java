@@ -108,6 +108,51 @@ class OrbitServiceImplTest {
     }
 
     @Test
+    void streakSkipsTheWeekendAndStaysActiveBeforeTodaysQuiz() {
+        LocalDate firstAttempt = LocalDate.of(2026, 7, 3);
+        LocalDate queryStart = LocalDate.of(2026, 6, 29);
+        LocalDate queryEnd = LocalDate.of(2026, 7, 12);
+        when(orbitMapper.findFirstAttemptDate(USER_ID)).thenReturn(firstAttempt);
+        when(orbitMapper.findAttempts(USER_ID, queryStart, queryEnd)).thenReturn(List.of(
+                new OrbitData.OrbitAttemptRow(firstAttempt, 9, 0, 0),
+                new OrbitData.OrbitAttemptRow(LocalDate.of(2026, 7, 6), 8, 1, 1),
+                new OrbitData.OrbitAttemptRow(LocalDate.of(2026, 7, 7), 7, 2, 2)
+        ));
+
+        OrbitService.StreakResponse result = orbitService.getStreak(USER_ID);
+
+        assertThat(result.currentStreak()).isEqualTo(3);
+        assertThat(result.completedToday()).isFalse();
+    }
+
+    @Test
+    void streakIncludesTodayAfterCompletingTheQuiz() {
+        LocalDate monday = LocalDate.of(2026, 7, 6);
+        LocalDate sunday = LocalDate.of(2026, 7, 12);
+        when(orbitMapper.findFirstAttemptDate(USER_ID)).thenReturn(monday);
+        when(orbitMapper.findAttempts(USER_ID, monday, sunday)).thenReturn(List.of(
+                new OrbitData.OrbitAttemptRow(monday, 9, 0, 0),
+                new OrbitData.OrbitAttemptRow(monday.plusDays(1), 8, 1, 1),
+                new OrbitData.OrbitAttemptRow(monday.plusDays(2), 7, 2, 2)
+        ));
+
+        OrbitService.StreakResponse result = orbitService.getStreak(USER_ID);
+
+        assertThat(result.currentStreak()).isEqualTo(3);
+        assertThat(result.completedToday()).isTrue();
+    }
+
+    @Test
+    void streakIsEmptyWhenTheUserHasNoAttempts() {
+        when(orbitMapper.findFirstAttemptDate(USER_ID)).thenReturn(null);
+
+        OrbitService.StreakResponse result = orbitService.getStreak(USER_ID);
+
+        assertThat(result.currentStreak()).isZero();
+        assertThat(result.completedToday()).isFalse();
+    }
+
+    @Test
     void rejectsUnknownPeriod() {
         assertThatThrownBy(() -> orbitService.getOrbit(USER_ID, "YEAR", null))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {

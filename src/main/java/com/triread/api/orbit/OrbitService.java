@@ -6,6 +6,14 @@ import java.util.List;
 public interface OrbitService {
     OrbitResponse getOrbit(long userId, String period, LocalDate anchorDate);
 
+    StreakResponse getStreak(long userId);
+
+    record StreakResponse(
+            int currentStreak,
+            boolean completedToday
+    ) {
+    }
+
     record OrbitResponse(
             String period,
             LocalDate startDate,

@@ -11,6 +11,11 @@
                qs.difficulty,
                qa.id AS attempt_id,
                qa.score AS attempt_score,
+               (
+                   SELECT COUNT(*)
+                   FROM attempt_answers aa
+                   WHERE aa.attempt_id = qa.id
+               ) AS attempt_total_questions,
                qa.completed_at
         FROM user_quiz_assignments assignment
         JOIN quiz_sets qs

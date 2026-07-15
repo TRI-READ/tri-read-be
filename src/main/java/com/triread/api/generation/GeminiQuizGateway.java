@@ -19,9 +19,10 @@ import tools.jackson.databind.ObjectMapper;
 public class GeminiQuizGateway implements QuizAiGateway {
     private static final String GENERATION_INSTRUCTIONS = """
             You create original Korean non-fiction reading quizzes for Korean high-school seniors.
-            Produce exactly 3 passages with distinct topics: humanities/social science, science/technology,
-            and economics/law/interdisciplinary. Each passage must have exactly 3 questions and each
-            passage content must contain 1,200 to 1,800 Korean characters. Each question must have
+            Produce exactly 3 passages in this order: (1) humanities/social science,
+            (2) science/technology, and (3) economics/law/interdisciplinary. Each passage must have
+            exactly 3 questions and each passage content must contain 1,200 to 1,800 Korean characters.
+            Each question must have
             exactly 4 unique options. Use only information stated or logically derivable from
             the passage. Ensure exactly one correct answer. Evidence must be an exact excerpt copied from
             the passage as one contiguous substring: do not paraphrase, normalize spacing, add ellipses,
