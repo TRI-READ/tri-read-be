@@ -55,9 +55,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     @Override
-    public AdminQuizService.CreateQuiz generate(LocalDate targetDate) {
-        String input = "Create the TRI:READ quiz for " + targetDate
-                + ". All passages and questions must be written in Korean.";
+    public AdminQuizService.CreateQuiz generate(
+            LocalDate targetDate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
+        String input = generationInput(targetDate, recentPassages);
         JsonNode payload = call(generationModel(), GENERATION_INSTRUCTIONS, input,
                 generationSchema(), 20_000);
         try {
@@ -71,6 +73,31 @@ public class GeminiQuizGateway implements QuizAiGateway {
             throw gatewayError("GEMINI_GENERATION_RESPONSE_INVALID",
                     "Generated quiz JSON could not be parsed.", exception);
         }
+    }
+
+    String generationInput(LocalDate targetDate,
+                           List<QuizGenerationData.RecentPassageRow> recentPassages) {
+        StringBuilder input = new StringBuilder()
+                .append("Create the TRI:READ quiz for ").append(targetDate)
+                .append(". All passages and questions must be written in Korean.\n")
+                .append("Topic diversity is mandatory. Do not reuse the same core subject, entity, ")
+                .append("theory, technology, event, or policy from the recent passages below. ")
+                .append("Changing only the title or angle still counts as reuse.\n");
+        if (recentPassages == null || recentPassages.isEmpty()) {
+            return input.append("There are no recent passages to exclude.").toString();
+        }
+        input.append("Recent passages to exclude:\n");
+        recentPassages.forEach(passage -> input
+                .append("- area ").append(passage.position())
+                .append(", ").append(passage.challengeDate())
+                .append(": title=").append(display(passage.title()))
+                .append(", topic=").append(display(passage.topic()))
+                .append('\n'));
+        return input.toString();
+    }
+
+    private String display(String value) {
+        return value == null || value.isBlank() ? "(unspecified)" : value.trim();
     }
 
     @Override

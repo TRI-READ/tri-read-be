@@ -8,6 +8,7 @@ import com.triread.api.common.ApiException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private final QuizGenerationMapper mapper;
     private final AdminQuizService adminQuizService;
     private final RuleBasedQuizValidator ruleValidator;
+    private final QuizTopicDiversityValidator topicDiversityValidator;
     private final QuizAiGateway aiGateway;
     private final QuizGenerationProperties properties;
     private final ObjectMapper objectMapper;
@@ -26,6 +28,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     public QuizGenerationServiceImpl(QuizGenerationMapper mapper,
                                      AdminQuizService adminQuizService,
                                      RuleBasedQuizValidator ruleValidator,
+                                     QuizTopicDiversityValidator topicDiversityValidator,
                                      QuizAiGateway aiGateway,
                                      QuizGenerationProperties properties,
                                      ObjectMapper objectMapper,
@@ -33,6 +36,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         this.mapper = mapper;
         this.adminQuizService = adminQuizService;
         this.ruleValidator = ruleValidator;
+        this.topicDiversityValidator = topicDiversityValidator;
         this.aiGateway = aiGateway;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -55,6 +59,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         mapper.insertLog(log);
         long logId = log.getId();
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
+        List<QuizGenerationData.RecentPassageRow> excludedPassages = new ArrayList<>(
+                mapper.findRecentPassages(targetDate, targetDate.minusDays(7)));
         String latestRaw = null;
         String latestError = null;
 
@@ -62,7 +68,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             Long persistedQuizId = null;
             try {
                 updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
-                AdminQuizService.CreateQuiz generated = aiGateway.generate(targetDate);
+                AdminQuizService.CreateQuiz generated = aiGateway.generate(
+                        targetDate, List.copyOf(excludedPassages));
                 latestRaw = serialize(generated);
                 updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
 
@@ -72,6 +79,18 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     latestError = summarize(ruleResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, ruleResult.score(), latestRaw, latestError,
+                            attempt == maxAttempts ? clock.instant() : null);
+                    continue;
+                }
+
+                QuizValidation.Result diversityResult = topicDiversityValidator.validate(
+                        generated, excludedPassages);
+                excludedPassages.addAll(toRecentPassages(generated));
+                if (!passes(diversityResult)) {
+                    saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
+                    latestError = summarize(diversityResult);
+                    updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
+                            attempt, diversityResult.score(), latestRaw, latestError,
                             attempt == maxAttempts ? clock.instant() : null);
                     continue;
                 }
@@ -134,6 +153,19 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private boolean passes(QuizValidation.Result result) {
         return result.passed() && result.score() >= properties.getPassScore()
                 && result.issues().stream().noneMatch(issue -> "ERROR".equals(issue.severity()));
+    }
+
+    private List<QuizGenerationData.RecentPassageRow> toRecentPassages(
+            AdminQuizService.CreateQuiz quiz
+    ) {
+        if (quiz == null || quiz.passages() == null) return List.of();
+        List<QuizGenerationData.RecentPassageRow> passages = new ArrayList<>();
+        for (int index = 0; index < quiz.passages().size(); index++) {
+            AdminQuizService.CreatePassage passage = quiz.passages().get(index);
+            passages.add(new QuizGenerationData.RecentPassageRow(
+                    quiz.challengeDate(), index + 1, passage.title(), passage.topic()));
+        }
+        return passages;
     }
 
     private boolean isTransient(ApiException exception) {
