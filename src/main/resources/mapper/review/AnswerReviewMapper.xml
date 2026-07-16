@@ -12,6 +12,7 @@
         qs.challenge_date,
         p.title AS passage_title,
         p.topic AS passage_topic,
+        p.content AS passage_content,
         q.position AS question_position,
         q.content AS question_content,
         selected_option.id AS selected_option_id,

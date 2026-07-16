@@ -28,6 +28,7 @@ public interface AnswerReviewService {
             LocalDate challengeDate,
             String passageTitle,
             String passageTopic,
+            String passageContent,
             short questionPosition,
             String questionContent,
             ReviewOption selectedOption,
@@ -47,6 +48,7 @@ public interface AnswerReviewService {
                     row.challengeDate(),
                     row.passageTitle(),
                     row.passageTopic(),
+                    row.passageContent(),
                     row.questionPosition(),
                     row.questionContent(),
                     new ReviewOption(

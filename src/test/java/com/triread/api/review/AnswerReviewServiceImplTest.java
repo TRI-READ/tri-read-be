@@ -57,6 +57,8 @@ class AnswerReviewServiceImplTest {
                 .isEqualTo("Wrong answer");
         assertThat(result.reviews().getFirst().correctOption().content())
                 .isEqualTo("Correct answer");
+        assertThat(result.reviews().getFirst().passageContent())
+                .isEqualTo("Passage content");
     }
 
     @Test
@@ -121,6 +123,7 @@ class AnswerReviewServiceImplTest {
                 LocalDate.of(2026, 7, 11),
                 "Passage title",
                 "Science",
+                "Passage content",
                 (short) 2,
                 "Question content",
                 1001L,
