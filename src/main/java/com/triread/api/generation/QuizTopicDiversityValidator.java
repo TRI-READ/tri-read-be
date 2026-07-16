@@ -22,6 +22,14 @@ public class QuizTopicDiversityValidator {
             "\uBD80\uD130", "\uCC98\uB7FC", "\uBCF4\uB2E4", "\uACFC", "\uC640",
             "\uC740", "\uB294", "\uC744", "\uB97C", "\uC774", "\uAC00", "\uC758", "\uB85C"
     );
+    private static final Set<String> BROAD_AREA_TOPICS = Set.of(
+            "\uC778\uBB38", "\uC0AC\uD68C", "\uC778\uBB38 \uC0AC\uD68C",
+            "\uACFC\uD559", "\uAE30\uC220", "\uACFC\uD559 \uAE30\uC220",
+            "\uACBD\uC81C", "\uBC95", "\uACBD\uC81C \uBC95",
+            "humanities", "social", "humanities social",
+            "science", "technology", "science technology",
+            "economics", "law", "economics law"
+    );
 
     public QuizValidation.Result validate(
             AdminQuizService.CreateQuiz quiz,
@@ -39,20 +47,40 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreatePassage passage = quiz.passages().get(index);
             recentPassages.stream()
                     .filter(recent -> recent.position() == position)
-                    .filter(recent -> similarTitle(passage.title(), recent.title()))
+                    .filter(recent -> overlapsRecentPassage(passage, recent))
                     .findFirst()
                     .ifPresent(recent -> {
                         if (duplicatedPositions.add(position)) {
                             issues.add(new QuizValidation.Issue(
                                     "ERROR", "RECENT_TOPIC_OVERLAP", position, null,
-                                    "Generated title '" + passage.title()
-                                            + "' overlaps recent title '" + recent.title() + "'."
+                                    "Generated passage '" + passage.title() + "' (" + passage.topic()
+                                            + ") overlaps recent passage '" + recent.title()
+                                            + "' (" + recent.topic() + ")."
                             ));
                         }
                     });
         }
         int score = Math.max(0, 100 - issues.size() * 30);
         return new QuizValidation.Result(issues.isEmpty(), score, issues);
+    }
+
+    private boolean overlapsRecentPassage(
+            AdminQuizService.CreatePassage passage,
+            QuizGenerationData.RecentPassageRow recent
+    ) {
+        if (similarTitle(passage.title(), recent.title())) return true;
+
+        boolean generatedTopicSpecific = isSpecificTopic(passage.topic());
+        boolean recentTopicSpecific = isSpecificTopic(recent.topic());
+        if (generatedTopicSpecific && recentTopicSpecific
+                && similarTitle(passage.topic(), recent.topic())) return true;
+        if (generatedTopicSpecific && similarTitle(passage.topic(), recent.title())) return true;
+        return recentTopicSpecific && similarTitle(passage.title(), recent.topic());
+    }
+
+    private boolean isSpecificTopic(String topic) {
+        String normalized = normalize(topic);
+        return !normalized.isBlank() && !BROAD_AREA_TOPICS.contains(normalized);
     }
 
     boolean similarTitle(String left, String right) {
