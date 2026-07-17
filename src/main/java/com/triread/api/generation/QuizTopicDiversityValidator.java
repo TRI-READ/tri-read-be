@@ -23,9 +23,11 @@ public class QuizTopicDiversityValidator {
             "\uC740", "\uB294", "\uC744", "\uB97C", "\uC774", "\uAC00", "\uC758", "\uB85C"
     );
     private static final Set<String> BROAD_AREA_TOPICS = Set.of(
-            "\uC778\uBB38", "\uC0AC\uD68C", "\uC778\uBB38 \uC0AC\uD68C",
-            "\uACFC\uD559", "\uAE30\uC220", "\uACFC\uD559 \uAE30\uC220",
-            "\uACBD\uC81C", "\uBC95", "\uACBD\uC81C \uBC95",
+            "\uC778\uBB38", "\uC778\uBB38\uD559", "\uC0AC\uD68C", "\uC0AC\uD68C\uACFC\uD559",
+            "\uC778\uBB38 \uC0AC\uD68C", "\uC778\uBB38\uD559 \uC0AC\uD68C\uACFC\uD559",
+            "\uACFC\uD559", "\uAE30\uC220", "\uACFC\uD559\uAE30\uC220", "\uACFC\uD559 \uAE30\uC220",
+            "\uACBD\uC81C", "\uACBD\uC81C\uD559", "\uBC95", "\uBC95\uD559",
+            "\uACBD\uC81C \uBC95", "\uACBD\uC81C\uD559 \uBC95\uD559",
             "humanities", "social", "humanities social",
             "science", "technology", "science technology",
             "economics", "law", "economics law"
