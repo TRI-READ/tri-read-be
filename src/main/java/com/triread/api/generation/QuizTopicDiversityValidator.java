@@ -27,7 +27,9 @@ public class QuizTopicDiversityValidator {
             "\uC778\uBB38 \uC0AC\uD68C", "\uC778\uBB38\uD559 \uC0AC\uD68C\uACFC\uD559",
             "\uACFC\uD559", "\uAE30\uC220", "\uACFC\uD559\uAE30\uC220", "\uACFC\uD559 \uAE30\uC220",
             "\uACBD\uC81C", "\uACBD\uC81C\uD559", "\uBC95", "\uBC95\uD559",
-            "\uACBD\uC81C \uBC95", "\uACBD\uC81C\uD559 \uBC95\uD559",
+            "\uACBD\uC81C \uBC95", "\uBC95\uACFC \uACBD\uC81C", "\uBC95\uACFC \uACBD\uC81C\uD559",
+            "\uACBD\uC81C\uD559 \uBC95\uD559", "\uACBD\uC81C \uBC95 \uC735\uD569",
+            "\uACBD\uC81C\uD559 \uBC95\uD559 \uC735\uD569", "\uC735\uD569", "\uD559\uC81C\uAC04",
             "humanities", "social", "humanities social",
             "science", "technology", "science technology",
             "economics", "law", "economics law"
