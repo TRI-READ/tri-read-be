@@ -12,11 +12,16 @@ public final class QuizData {
             long quizSetId,
             LocalDate challengeDate,
             String variantCode,
-            String difficulty,
-            Long attemptId,
-            Integer attemptScore,
-            Integer attemptTotalQuestions,
-            Long attemptPassageId,
+            String difficulty
+    ) {
+    }
+
+    public record AttemptRow(
+            long attemptId,
+            int score,
+            int totalQuestions,
+            long passageId,
+            String attemptType,
             Instant completedAt
     ) {
     }
@@ -59,17 +64,23 @@ public final class QuizData {
         private Long id;
         private final long userId;
         private final long quizSetId;
+        private final long passageId;
+        private final String attemptType;
         private final int score;
         private final Instant completedAt;
 
         public QuizAttemptInsert(
                 long userId,
                 long quizSetId,
+                long passageId,
+                String attemptType,
                 int score,
                 Instant completedAt
         ) {
             this.userId = userId;
             this.quizSetId = quizSetId;
+            this.passageId = passageId;
+            this.attemptType = attemptType;
             this.score = score;
             this.completedAt = completedAt;
         }
@@ -88,6 +99,14 @@ public final class QuizData {
 
         public long getQuizSetId() {
             return quizSetId;
+        }
+
+        public long getPassageId() {
+            return passageId;
+        }
+
+        public String getAttemptType() {
+            return attemptType;
         }
 
         public int getScore() {

@@ -98,6 +98,7 @@
             SELECT qa.id AS attempt_id,
                    qa.user_id,
                    qa.score,
+                   qa.completed_at,
                    (
                        SELECT COUNT(*)
                        FROM attempt_answers aa
@@ -115,6 +116,7 @@
             FROM quiz_attempts qa
             JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
             WHERE qs.challenge_date BETWEEN #{startDate} AND #{endDate}
+              AND qa.attempt_type = 'PRIMARY'
         ), credited_attempts AS (
             SELECT *
             FROM ranked_attempts
@@ -142,7 +144,7 @@
         ), today_stats AS (
             SELECT user_id, TRUE AS today_completed
             FROM ranked_attempts
-            WHERE challenge_date = #{today}
+            WHERE (completed_at AT TIME ZONE 'Asia/Seoul')::date = #{today}
             GROUP BY user_id
         ), recovered_stats AS (
             SELECT ar.user_id,

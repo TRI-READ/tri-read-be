@@ -56,6 +56,8 @@ class QuizServiceTest {
         assertThat(result.quizSetId()).isEqualTo(QUIZ_SET_ID);
         assertThat(result.challengeDate()).isEqualTo(TODAY);
         assertThat(result.attempt()).isNull();
+        assertThat(result.attempts()).isEmpty();
+        assertThat(result.bonusUnlocked()).isFalse();
         assertThat(result.passages()).hasSize(3);
         assertThat(result.passages())
                 .allSatisfy(passage -> {
@@ -69,32 +71,26 @@ class QuizServiceTest {
     @Test
     void todayIncludesCompletedAttemptSummary() {
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(
-                new QuizData.QuizSetRow(
-                        QUIZ_SET_ID,
-                        TODAY,
-                        "A",
-                        "HIGH_SCHOOL_GRADE_3",
-                        91L,
-                        3,
-                        3,
-                        101L,
-                        NOW
-                )
+                quizSet(TODAY, "A")
+        );
+        when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
+                List.of(new QuizData.AttemptRow(
+                        91L, 3, 3, 101L, "PRIMARY", NOW
+                ))
         );
         givenCompleteContent();
 
         QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
 
         assertThat(result.attempt()).isEqualTo(
-                new QuizService.AttemptSummary(91L, 3, 3, 101L, NOW)
+                new QuizService.AttemptSummary(91L, 3, 3, 101L, "PRIMARY", NOW)
         );
+        assertThat(result.bonusUnlocked()).isTrue();
     }
 
     @Test
     void assignsOnePublishedVariantOnFirstVisit() {
-        QuizData.QuizSetRow assigned = new QuizData.QuizSetRow(
-                QUIZ_SET_ID, TODAY, "B", "HIGH_SCHOOL_GRADE_3",
-                null, null, null, null, null);
+        QuizData.QuizSetRow assigned = quizSet(TODAY, "B");
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(null, assigned);
         when(quizMapper.findPublishedQuizSetIds(TODAY, USER_ID))
                 .thenReturn(List.of(16L, QUIZ_SET_ID, 18L));
@@ -131,6 +127,8 @@ class QuizServiceTest {
         assertThat(result.wrongCount()).isEqualTo(1);
         assertThat(result.answers()).hasSize(3);
         assertThat(result.answers()).filteredOn(QuizService.QuestionResult::correct).hasSize(2);
+        assertThat(result.passageId()).isEqualTo(101L);
+        assertThat(result.attemptType()).isEqualTo("PRIMARY");
         verify(quizMapper).insertAttemptAnswers(argThat(answers ->
                 answers.size() == 3
                         && answers.stream().allMatch(answer -> answer.attemptId() == 55L)
@@ -147,7 +145,6 @@ class QuizServiceTest {
     void submitRejectsOptionFromAnotherQuestion() {
         givenUncompletedTodayQuiz();
         givenCompleteContent();
-        when(quizMapper.findAnswerKeys(QUIZ_SET_ID)).thenReturn(answerKeys(questions));
         List<QuizService.SubmittedAnswer> submittedAnswers = submittedAnswers(3);
         QuizService.SubmittedAnswer first = submittedAnswers.getFirst();
         submittedAnswers.set(0, new QuizService.SubmittedAnswer(
@@ -168,17 +165,13 @@ class QuizServiceTest {
     @Test
     void submitRejectsAlreadyCompletedQuiz() {
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(
-                new QuizData.QuizSetRow(
-                        QUIZ_SET_ID,
-                        TODAY,
-                        "A",
-                        "HIGH_SCHOOL_GRADE_3",
-                        91L,
-                        9,
-                        9,
-                        null,
-                        NOW
-                )
+                quizSet(TODAY, "A")
+        );
+        givenCompleteContent();
+        when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
+                List.of(new QuizData.AttemptRow(
+                        91L, 3, 3, 101L, "PRIMARY", NOW
+                ))
         );
 
         assertThatThrownBy(() ->
@@ -209,7 +202,6 @@ class QuizServiceTest {
     void submitRejectsAnswersMixedFromDifferentPassages() {
         givenUncompletedTodayQuiz();
         givenCompleteContent();
-        when(quizMapper.findAnswerKeys(QUIZ_SET_ID)).thenReturn(answerKeys(questions));
         List<QuizService.SubmittedAnswer> submittedAnswers = submittedAnswers(3);
         QuizData.QuestionRow otherPassageQuestion = questions.get(3);
         submittedAnswers.set(2, new QuizService.SubmittedAnswer(
@@ -225,19 +217,65 @@ class QuizServiceTest {
         verify(quizMapper, never()).insertAttempt(any());
     }
 
+    @Test
+    void submitUnlocksASecondPassageAsBonusAfterPrimaryCompletion() {
+        givenUncompletedTodayQuiz();
+        givenCompleteContent();
+        when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
+                List.of(new QuizData.AttemptRow(
+                        91L, 2, 3, 101L, "PRIMARY", NOW.minusSeconds(300)
+                ))
+        );
+        when(quizMapper.findAnswerKeys(QUIZ_SET_ID)).thenReturn(answerKeys(questions));
+        doAnswer(invocation -> {
+            QuizData.QuizAttemptInsert attempt = invocation.getArgument(0);
+            attempt.setId(92L);
+            return 1;
+        }).when(quizMapper).insertAttempt(any(QuizData.QuizAttemptInsert.class));
+
+        QuizService.QuizResultResponse result = quizService.submitAttempt(
+                USER_ID,
+                QUIZ_SET_ID,
+                submittedAnswersForPassage(1, 3)
+        );
+
+        assertThat(result.passageId()).isEqualTo(102L);
+        assertThat(result.attemptType()).isEqualTo("BONUS");
+        verify(quizMapper).insertAttempt(argThat(attempt ->
+                attempt.getPassageId() == 102L
+                        && "BONUS".equals(attempt.getAttemptType())
+        ));
+    }
+
+    @Test
+    void saturdayUsesThePreviousFridayQuiz() {
+        LocalDate friday = LocalDate.of(2026, 7, 17);
+        Clock weekendClock = Clock.fixed(
+                Instant.parse("2026-07-18T03:00:00Z"),
+                ZoneId.of("Asia/Seoul")
+        );
+        quizService = new QuizService(quizMapper, weekendClock);
+        when(quizMapper.findTodayQuiz(friday, USER_ID)).thenReturn(quizSet(friday, "A"));
+        givenCompleteContent();
+
+        QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
+
+        assertThat(result.challengeDate()).isEqualTo(friday);
+        verify(quizMapper).findTodayQuiz(friday, USER_ID);
+    }
+
     private void givenUncompletedTodayQuiz() {
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(
-                new QuizData.QuizSetRow(
-                        QUIZ_SET_ID,
-                        TODAY,
-                        "A",
-                        "HIGH_SCHOOL_GRADE_3",
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
-                )
+                quizSet(TODAY, "A")
+        );
+    }
+
+    private QuizData.QuizSetRow quizSet(LocalDate challengeDate, String variantCode) {
+        return new QuizData.QuizSetRow(
+                QUIZ_SET_ID,
+                challengeDate,
+                variantCode,
+                "HIGH_SCHOOL_GRADE_3"
         );
     }
 
@@ -302,9 +340,16 @@ class QuizServiceTest {
     }
 
     private List<QuizService.SubmittedAnswer> submittedAnswers(int correctCount) {
+        return submittedAnswersForPassage(0, correctCount);
+    }
+
+    private List<QuizService.SubmittedAnswer> submittedAnswersForPassage(
+            int passageIndex,
+            int correctCount
+    ) {
         List<QuizService.SubmittedAnswer> answers = new ArrayList<>();
         for (int index = 0; index < 3; index++) {
-            long questionId = questions.get(index).questionId();
+            long questionId = questions.get(passageIndex * 3 + index).questionId();
             long selectedOptionId = questionId * 10 + (index < correctCount ? 1 : 2);
             answers.add(new QuizService.SubmittedAnswer(questionId, selectedOptionId));
         }

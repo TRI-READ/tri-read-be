@@ -77,7 +77,7 @@ public class OrbitServiceImpl implements OrbitService {
                 queryStart, queryEnd, attempts
         );
         boolean completedToday = attempts.stream()
-                .anyMatch(attempt -> today.equals(attempt.challengeDate()));
+                .anyMatch(attempt -> today.equals(attempt.completedDate()));
         LocalDate cursor = isWeekday(today) && assignedAttempts.containsKey(today)
                 ? today
                 : previousWeekday(today);
