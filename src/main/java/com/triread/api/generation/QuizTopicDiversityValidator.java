@@ -34,6 +34,13 @@ public class QuizTopicDiversityValidator {
             "science", "technology", "science technology",
             "economics", "law", "economics law"
     );
+    private static final Set<String> BROAD_AREA_TERMS = Set.of(
+            "\uC778\uBB38", "\uC778\uBB38\uD559", "\uC0AC\uD68C", "\uC0AC\uD68C\uACFC\uD559",
+            "\uACFC\uD559", "\uAE30\uC220", "\uACFC\uD559\uAE30\uC220", "\uACBD\uC81C", "\uACBD\uC81C\uD559",
+            "\uBC95", "\uBC95\uD559", "\uC81C\uB3C4", "\uC735\uD569", "\uD559\uC81C\uAC04",
+            "humanities", "social", "science", "technology", "economics", "law",
+            "institution", "institutions", "interdisciplinary"
+    );
 
     public QuizValidation.Result validate(
             AdminQuizService.CreateQuiz quiz,
@@ -84,7 +91,13 @@ public class QuizTopicDiversityValidator {
 
     private boolean isSpecificTopic(String topic) {
         String normalized = normalize(topic);
-        return !normalized.isBlank() && !BROAD_AREA_TOPICS.contains(normalized);
+        if (normalized.isBlank() || BROAD_AREA_TOPICS.contains(normalized)) return false;
+
+        Set<String> topicTerms = Arrays.stream(normalized.split("\\s+"))
+                .map(this::stripParticle)
+                .filter(term -> !term.isBlank())
+                .collect(Collectors.toSet());
+        return topicTerms.isEmpty() || !BROAD_AREA_TERMS.containsAll(topicTerms);
     }
 
     boolean similarTitle(String left, String right) {

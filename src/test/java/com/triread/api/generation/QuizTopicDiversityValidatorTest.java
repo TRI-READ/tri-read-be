@@ -72,7 +72,8 @@ class QuizTopicDiversityValidatorTest {
         for (String broadArea : List.of(
                 "\uC778\uBB38\uD559", "\uC0AC\uD68C\uACFC\uD559", "\uC778\uBB38\uD559/\uC0AC\uD68C\uACFC\uD559",
                 "\uACFC\uD559\uAE30\uC220", "\uACBD\uC81C\uD559", "\uBC95\uD559", "\uACBD\uC81C\uD559/\uBC95\uD559",
-                "\uBC95\uACFC \uACBD\uC81C", "\uACBD\uC81C/\uBC95/\uC735\uD569", "\uD559\uC81C\uAC04")) {
+                "\uBC95\uACFC \uACBD\uC81C", "\uACBD\uC81C\uC640 \uBC95", "\uACBD\uC81C\uC640 \uC81C\uB3C4",
+                "\uACBD\uC81C/\uBC95/\uC735\uD569", "\uD559\uC81C\uAC04")) {
             AdminQuizService.CreateQuiz quiz = quizWithFirstPassage(
                     "\uB3C4\uC2DC \uAC74\uCD95\uC774 \uBCF4\uD589\uC790 \uD589\uB3D9\uC5D0 \uBBF8\uCE58\uB294 \uC601\uD5A5", broadArea);
             List<QuizGenerationData.RecentPassageRow> recent = List.of(
