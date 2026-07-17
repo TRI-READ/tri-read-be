@@ -207,3 +207,18 @@ docker compose up --build
 ```
 
 Only Caddy should expose ports 80 and 443. Spring Boot and PostgreSQL stay inside the Docker network.
+
+### DuckDNS updater
+
+The OCI host can keep `tri-read.duckdns.org` synchronized with its current
+public IP through a systemd timer. Install the updater on the server with:
+
+```bash
+chmod +x deploy/install-duckdns-updater.sh
+deploy/install-duckdns-updater.sh tri-read
+```
+
+Store the regenerated DuckDNS token only in `/etc/tri-read-duckdns.env`, set the
+file mode to `0600`, and start `tri-read-duckdns.service` once to verify the
+configuration. The timer retries the update every five minutes. Never add the
+token to GitHub, application YAML, or this repository.
