@@ -78,7 +78,7 @@ class QuizGenerationServiceImplTest {
         assertThat(result.status()).isEqualTo("READY");
         assertThat(result.validationScore()).isEqualTo(96);
         assertThat(result.autoPublished()).isFalse();
-        verify(mapper, times(2)).insertValidationResult(any());
+        verify(mapper, times(3)).insertValidationResult(any());
         verify(mapper).updateLog(eq(42L), eq(7L), eq("READY"), eq(1), eq(96),
                 anyString(), isNull(), eq(NOW), eq(NOW));
     }
@@ -158,6 +158,24 @@ class QuizGenerationServiceImplTest {
             assertThat(validation.issues()).singleElement().satisfies(issue ->
                     assertThat(issue.code()).isEqualTo("WORDING"));
         });
+    }
+
+    @Test
+    void listsGenerationLogsWithGlobalStatsAndPagination() {
+        QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
+                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
+                "READY", 1, 95, null, NOW, NOW, NOW);
+        when(mapper.countLogs()).thenReturn(27L);
+        when(mapper.findLogs(10, 10)).thenReturn(List.of(log));
+        when(mapper.getStats()).thenReturn(new QuizGenerationData.GenerationStats(18L, 9L));
+
+        QuizGenerationService.GenerationLogPage result = service.getLogs(1, 10);
+
+        assertThat(result.page().items()).containsExactly(log);
+        assertThat(result.page().page()).isEqualTo(1);
+        assertThat(result.page().totalPages()).isEqualTo(3);
+        assertThat(result.successCount()).isEqualTo(18);
+        assertThat(result.failureCount()).isEqualTo(9);
     }
 
     @Test

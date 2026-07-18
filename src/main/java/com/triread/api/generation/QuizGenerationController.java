@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,8 +31,10 @@ public class QuizGenerationController {
     }
 
     @GetMapping
-    public List<QuizGenerationData.GenerationLogRow> logs() {
-        return service.getLogs();
+    public QuizGenerationService.GenerationLogPage logs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return service.getLogs(page, size);
     }
 
     @GetMapping("/{generationLogId}")

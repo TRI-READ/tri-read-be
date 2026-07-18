@@ -8,7 +8,10 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AdminQuizMapper {
-    List<AdminQuizData.QuizRow> findQuizzes();
+    List<AdminQuizData.QuizRow> findQuizzes(@Param("offset") int offset,
+                                            @Param("limit") int limit);
+    long countQuizzes();
+    long countPendingQuizzes();
     AdminQuizData.QuizRow findQuiz(long quizSetId);
     int countActiveByDate(LocalDate challengeDate);
     List<String> findActiveVariantCodesByDate(LocalDate challengeDate);

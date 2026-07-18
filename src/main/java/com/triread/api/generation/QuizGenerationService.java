@@ -1,13 +1,14 @@
 package com.triread.api.generation;
 
 import com.triread.api.admin.AdminQuizService;
+import com.triread.api.common.PageResponse;
 import java.time.LocalDate;
 import java.util.List;
 
 public interface QuizGenerationService {
     GenerationResult generate(LocalDate targetDate);
     GenerationResult retry(long generationLogId);
-    List<QuizGenerationData.GenerationLogRow> getLogs();
+    GenerationLogPage getLogs(int page, int size);
     GenerationDetail getLog(long generationLogId);
 
     record GenerationResult(long generationLogId, String status, int attemptCount,
@@ -20,4 +21,7 @@ public interface QuizGenerationService {
 
     record GenerationDetail(QuizGenerationData.GenerationLogRow log,
                             List<ValidationResult> validations) {}
+
+    record GenerationLogPage(PageResponse<QuizGenerationData.GenerationLogRow> page,
+                             long successCount, long failureCount) {}
 }

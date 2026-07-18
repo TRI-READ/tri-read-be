@@ -27,6 +27,11 @@
         SELECT id, login_name, display_name, pin_hash, app_role, enabled, created_at, last_login_at
         FROM app_users
         ORDER BY created_at, id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM app_users
     </select>
 
     <insert id="insert"
