@@ -45,7 +45,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     }
 
     @Override
-    public GenerationResult generate(LocalDate targetDate) {
+    public synchronized GenerationResult generate(LocalDate targetDate) {
         if (targetDate == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TARGET_DATE_REQUIRED", "Target date is required.");
         }
@@ -53,6 +53,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         if (adminQuizService.countActiveQuizSets(targetDate) >= variantLimit) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_INVENTORY_FULL",
                     "The quiz variant inventory is already full for this date.");
+        }
+        if (dailyJobCount() >= Math.max(1, properties.getMaxJobsPerDay())) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "QUIZ_GENERATION_DAILY_LIMIT_REACHED",
+                    "The daily quiz generation budget has been exhausted.");
         }
 
         QuizGenerationData.GenerationLogInsert log = new QuizGenerationData.GenerationLogInsert(
@@ -165,6 +169,13 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private boolean passes(QuizValidation.Result result) {
         return result.passed() && result.score() >= properties.getPassScore()
                 && result.issues().stream().noneMatch(issue -> "ERROR".equals(issue.severity()));
+    }
+
+    private long dailyJobCount() {
+        LocalDate today = LocalDate.now(clock);
+        Instant from = today.atStartOfDay(clock.getZone()).toInstant();
+        Instant until = today.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
+        return mapper.countLogsCreatedBetween(from, until);
     }
 
     private List<QuizGenerationData.RecentPassageRow> toRecentPassages(

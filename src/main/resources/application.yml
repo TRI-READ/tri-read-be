@@ -38,9 +38,12 @@ app:
   quiz-generation:
     enabled: ${QUIZ_GENERATION_ENABLED:false}
     auto-publish: ${QUIZ_AUTO_PUBLISH:false}
-    max-attempts: ${QUIZ_GENERATION_MAX_ATTEMPTS:3}
+    max-attempts: ${QUIZ_GENERATION_MAX_ATTEMPTS:2}
     pass-score: ${QUIZ_VALIDATION_PASS_SCORE:90}
     variants-per-date: ${QUIZ_VARIANTS_PER_DATE:3}
+    inventory-days: ${QUIZ_INVENTORY_DAYS:3}
+    max-jobs-per-run: ${QUIZ_GENERATION_MAX_JOBS_PER_RUN:3}
+    max-jobs-per-day: ${QUIZ_GENERATION_MAX_JOBS_PER_DAY:3}
     retry-delay-ms: ${QUIZ_GENERATION_RETRY_DELAY_MS:10000}
     cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     recovery-cron: ${QUIZ_GENERATION_RECOVERY_CRON:0 30 5 * * *}

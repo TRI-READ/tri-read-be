@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,7 +44,8 @@ class QuizGenerationServiceImplTest {
     @BeforeEach
     void setUp() {
         properties = new QuizGenerationProperties();
-        properties.setMaxAttempts(3);
+        properties.setMaxAttempts(2);
+        properties.setMaxJobsPerDay(3);
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
@@ -136,6 +138,37 @@ class QuizGenerationServiceImplTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getCode())
                                 .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));
+    }
+
+    @Test
+    void rejectsGenerationWhenDailyJobBudgetIsExhausted() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        when(mapper.countLogsCreatedBetween(
+                Instant.parse("2026-07-13T00:00:00Z"),
+                Instant.parse("2026-07-14T00:00:00Z"))).thenReturn(3L);
+
+        assertThatThrownBy(() -> service.generate(date))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.getCode())
+                                .isEqualTo("QUIZ_GENERATION_DAILY_LIMIT_REACHED"));
+        verify(mapper, never()).insertLog(any());
+        verify(aiGateway, never()).generate(any(), anyList());
+    }
+
+    @Test
+    void stopsAfterConfiguredTwoAttempts() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizValidation.Result failed = new QuizValidation.Result(false, 70, List.of(
+                new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
+        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(ruleValidator.validate(generated)).thenReturn(failed);
+
+        assertThatThrownBy(() -> service.generate(date))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("QUIZ_GENERATION_FAILED"));
+        verify(aiGateway, times(2)).generate(eq(date), anyList());
+        verify(aiGateway, never()).validate(any());
     }
 
     @Test

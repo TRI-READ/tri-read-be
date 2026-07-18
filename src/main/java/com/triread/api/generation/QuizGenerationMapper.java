@@ -22,6 +22,8 @@ public interface QuizGenerationMapper {
     List<QuizGenerationData.GenerationLogRow> findLogs(@Param("offset") int offset,
                                                         @Param("limit") int limit);
     long countLogs();
+    long countLogsCreatedBetween(@Param("from") Instant from,
+                                 @Param("until") Instant until);
     QuizGenerationData.GenerationStats getStats();
     QuizGenerationData.GenerationLogRow findLog(long generationLogId);
     List<QuizGenerationData.ValidationResultRow> findValidationResults(long generationLogId);
