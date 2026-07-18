@@ -6,6 +6,7 @@ import java.util.List;
 
 public interface QuizGenerationService {
     GenerationResult generate(LocalDate targetDate);
+    GenerationResult retry(long generationLogId);
     List<QuizGenerationData.GenerationLogRow> getLogs();
     GenerationDetail getLog(long generationLogId);
 

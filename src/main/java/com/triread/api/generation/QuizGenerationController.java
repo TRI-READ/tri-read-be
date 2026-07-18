@@ -40,5 +40,11 @@ public class QuizGenerationController {
         return service.getLog(generationLogId);
     }
 
+    @PostMapping("/{generationLogId}/retry")
+    public ResponseEntity<QuizGenerationService.GenerationResult> retry(
+            @PathVariable @Positive long generationLogId) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.retry(generationLogId));
+    }
+
     public record GenerateQuizRequest(@NotNull LocalDate targetDate) {}
 }

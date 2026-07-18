@@ -150,6 +150,20 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 "Quiz generation failed after " + maxAttempts + " attempts. " + latestError);
     }
 
+    @Override
+    public GenerationResult retry(long generationLogId) {
+        QuizGenerationData.GenerationLogRow log = mapper.findLog(generationLogId);
+        if (log == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "GENERATION_LOG_NOT_FOUND",
+                    "The quiz generation log was not found.");
+        }
+        if (!"FAILED".equals(log.status())) {
+            throw new ApiException(HttpStatus.CONFLICT, "GENERATION_RETRY_NOT_ALLOWED",
+                    "Only a failed generation can be retried.");
+        }
+        return generate(log.targetDate());
+    }
+
     private boolean passes(QuizValidation.Result result) {
         return result.passed() && result.score() >= properties.getPassScore()
                 && result.issues().stream().noneMatch(issue -> "ERROR".equals(issue.severity()));

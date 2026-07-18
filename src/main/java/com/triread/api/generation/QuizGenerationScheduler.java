@@ -72,6 +72,11 @@ public class QuizGenerationScheduler {
         }
     }
 
+    @Scheduled(cron = "${app.quiz-generation.recovery-cron}", zone = "${app.time-zone}")
+    public void recoverInventory() {
+        replenishInventory();
+    }
+
     private List<LocalDate> upcomingWeekdays(LocalDate today) {
         return Stream.iterate(today, date -> date.plusDays(1))
                 .filter(this::isWeekday)

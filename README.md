@@ -66,12 +66,16 @@ URL: jdbc:postgresql://localhost:15432/tri_read
 
 ```yaml
 app:
+  auth:
+    bootstrap-admin-login-name: "관리자로 지정할 기존 로그인 아이디"
   quiz-generation:
     gemini:
       api-key: "발급받은 키"
 ```
 
 실제 `application-secret.yml`은 Git에서 제외되며 JAR에도 포함되지 않습니다. 키가 들어 있는 파일은 커밋하지 않습니다.
+
+`bootstrap-admin-login-name`과 일치하는 사용자가 있으면 서버 시작 시 `ADMIN`으로 승격됩니다. 승격 후 값을 비워도 DB의 관리자 권한은 유지됩니다. 현재 규모에서는 사용자 행의 `app_role`로 `USER`와 `ADMIN`을 구분합니다. 세부 권한이 여러 종류로 늘어날 때 역할·권한 테이블로 분리합니다.
 
 ## 주요 API
 
@@ -124,9 +128,17 @@ POST   /api/admin/quizzes/{quizSetId}/publish
 POST /api/admin/quiz-generations
 GET  /api/admin/quiz-generations
 GET  /api/admin/quiz-generations/{generationLogId}
+POST /api/admin/quiz-generations/{generationLogId}/retry
+
+GET   /api/admin/users
+PATCH /api/admin/users/{userId}/role
 ```
 
-AI 생성 결과는 서버 규칙 검증과 별도의 AI 검증을 모두 통과해야 `REVIEWED` 상태가 됩니다. 자동 발행은 기본적으로 꺼져 있어 관리자가 최종 내용을 확인할 수 있습니다.
+AI 생성 결과는 서버 규칙 검증, 최근 주제 중복 검사와 별도의 AI 검증을 모두 통과해야 `REVIEWED` 상태가 됩니다. 자동 발행은 기본적으로 꺼져 있어 관리자가 최종 내용을 확인할 수 있습니다. 실패 기록은 관리자 화면에서 원인을 확인하고 다시 생성할 수 있습니다.
+
+기본 생성 스케줄은 매일 새벽에 향후 평일 재고를 채우고, 30분 뒤 한 차례 더 부족분을 복구합니다. 시간은 `QUIZ_GENERATION_CRON`, `QUIZ_GENERATION_RECOVERY_CRON`으로 조정합니다. 각 날짜는 최대 3세트를 보유하며 사용되지 않은 기존 발행 문제를 우선 재배정해 Gemini 호출을 줄입니다.
+
+관리자 권한 변경은 다음 로그인부터 새 세션에 반영됩니다. 현재 로그인한 관리자의 자기 강등과 마지막 관리자 강등은 서버에서 차단합니다.
 
 ## 배포
 

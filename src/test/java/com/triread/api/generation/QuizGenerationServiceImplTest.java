@@ -167,6 +167,40 @@ class QuizGenerationServiceImplTest {
                         exception -> assertThat(exception.getCode()).isEqualTo("GENERATION_LOG_NOT_FOUND"));
     }
 
+    @Test
+    void retriesFailedGenerationUsingOriginalTargetDate() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        QuizGenerationData.GenerationLogRow failedLog = new QuizGenerationData.GenerationLogRow(
+                41L, null, date, "GEMINI", "generation-model", "v1",
+                "FAILED", 3, null, "temporary failure", NOW, NOW, NOW);
+        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
+        when(mapper.findLog(41L)).thenReturn(failedLog);
+        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(ruleValidator.validate(generated)).thenReturn(passed);
+        when(aiGateway.validate(generated)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+                .thenReturn(detail(10L, date, "REVIEWED"));
+
+        QuizGenerationService.GenerationResult result = service.retry(41L);
+
+        assertThat(result.quiz().quiz().challengeDate()).isEqualTo(date);
+        verify(mapper).insertLog(any());
+    }
+
+    @Test
+    void rejectsRetryForSuccessfulGeneration() {
+        QuizGenerationData.GenerationLogRow readyLog = new QuizGenerationData.GenerationLogRow(
+                41L, 10L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
+                "READY", 1, 100, null, NOW, NOW, NOW);
+        when(mapper.findLog(41L)).thenReturn(readyLog);
+
+        assertThatThrownBy(() -> service.retry(41L))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("GENERATION_RETRY_NOT_ALLOWED"));
+    }
+
     private AdminQuizService.QuizDetail detail(long quizId, LocalDate date, String status) {
         return new AdminQuizService.QuizDetail(new AdminQuizService.QuizSummary(
                 quizId, date, "A", status, NOW, null), List.of());

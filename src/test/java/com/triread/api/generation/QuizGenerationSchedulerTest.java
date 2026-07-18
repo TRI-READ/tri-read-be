@@ -119,6 +119,18 @@ class QuizGenerationSchedulerTest {
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
     }
 
+    @Test
+    void recoveryScheduleUsesSameInventoryPolicy() {
+        stubActiveCounts(Map.of(
+                LocalDate.of(2026, 7, 13), 3,
+                LocalDate.of(2026, 7, 14), 3,
+                LocalDate.of(2026, 7, 15), 3));
+
+        scheduler.recoverInventory();
+
+        verify(generationService, never()).generate(any());
+    }
+
     private void stubActiveCounts(Map<LocalDate, Integer> activeCounts) {
         when(adminQuizService.countActiveQuizSets(any()))
                 .thenAnswer(invocation -> activeCounts.getOrDefault(invocation.getArgument(0), 0));

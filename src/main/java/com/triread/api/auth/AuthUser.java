@@ -1,5 +1,7 @@
 package com.triread.api.auth;
 
+import java.time.Instant;
+
 public class AuthUser {
 
     private Long id;
@@ -8,6 +10,8 @@ public class AuthUser {
     private String pinHash;
     private String appRole;
     private boolean enabled;
+    private Instant createdAt;
+    private Instant lastLoginAt;
 
     public Long getId() {
         return id;
@@ -55,5 +59,21 @@ public class AuthUser {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getLastLoginAt() {
+        return lastLoginAt;
+    }
+
+    public void setLastLoginAt(Instant lastLoginAt) {
+        this.lastLoginAt = lastLoginAt;
     }
 }
