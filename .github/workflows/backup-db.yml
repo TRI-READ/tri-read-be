@@ -1,0 +1,70 @@
+name: Backup production database
+
+on:
+  # GitHub cron is UTC. 17:30 UTC is 02:30 in Asia/Seoul.
+  schedule:
+    - cron: "30 17 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backup-production-db
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      OCI_HOST: ${{ secrets.OCI_HOST }}
+      OCI_USER: ${{ secrets.OCI_USER }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$OCI_HOST"
+          test -n "$OCI_USER"
+          test -n "$OCI_SSH_PRIVATE_KEY"
+          test -n "$BACKUP_ENCRYPTION_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci
+          chmod 600 ~/.ssh/oci
+          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+
+      - name: Create database dump
+        id: dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKUP_NAME="tri-read-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" 'bash -s' \
+            < deploy/backup-db.sh > "/tmp/$BACKUP_NAME"
+          test -s "/tmp/$BACKUP_NAME"
+          echo "name=$BACKUP_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Encrypt database dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -pass env:BACKUP_ENCRYPTION_KEY \
+            -in "/tmp/${{ steps.dump.outputs.name }}" \
+            -out "/tmp/${{ steps.dump.outputs.name }}.enc"
+          test -s "/tmp/${{ steps.dump.outputs.name }}.enc"
+          shred -u "/tmp/${{ steps.dump.outputs.name }}"
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.dump.outputs.name }}
+          path: /tmp/${{ steps.dump.outputs.name }}.enc
+          if-no-files-found: error
+          retention-days: 14
