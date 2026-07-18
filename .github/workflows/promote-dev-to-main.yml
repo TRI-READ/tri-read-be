@@ -7,6 +7,8 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
+  checks: read
   contents: write
   pull-requests: write
 
@@ -63,12 +65,39 @@ jobs:
 
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Enable auto-merge when repository policy allows it
+      - name: Wait for required pull request checks
         if: steps.changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh pr merge "${{ steps.pr.outputs.number }}" --auto --merge \
-            || echo "Auto-merge is unavailable. The PR will wait for repository policy requirements."
+          for attempt in $(seq 1 30); do
+            CHECK_COUNT="$(gh pr view "${{ steps.pr.outputs.number }}" \
+              --json statusCheckRollup \
+              --jq '.statusCheckRollup | length')"
 
+            if [ "$CHECK_COUNT" -gt 0 ]; then
+              gh pr checks "${{ steps.pr.outputs.number }}" --watch --fail-fast
+              exit 0
+            fi
+
+            echo "Waiting for pull request checks to start ($attempt/30)..."
+            sleep 10
+          done
+
+          echo "No pull request checks started within the timeout." >&2
+          exit 1
+
+      - name: Merge promotion pull request
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --merge
+
+      - name: Run main branch CI
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh workflow run ci.yml --ref main
