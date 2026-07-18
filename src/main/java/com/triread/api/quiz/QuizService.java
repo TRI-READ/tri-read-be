@@ -2,6 +2,7 @@ package com.triread.api.quiz;
 
 import com.triread.api.common.ApiException;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -35,23 +36,23 @@ public class QuizService {
     @Transactional
     public TodayQuizResponse getTodayQuiz(long userId) {
         LocalDate today = LocalDate.now(clock);
-        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, today);
+        LocalDate challengeDate = resolveChallengeDate(today);
+        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
         QuizContent content = loadAndValidateContent(quizSet.quizSetId());
-
-        AttemptSummary attempt = quizSet.attemptId() == null
-                ? null
-                : new AttemptSummary(
-                        quizSet.attemptId(),
-                        quizSet.attemptScore(),
-                        quizSet.completedAt()
-                );
+        List<AttemptSummary> attempts = findAttemptSummaries(userId, quizSet.quizSetId());
+        AttemptSummary primaryAttempt = attempts.stream()
+                .filter(attempt -> "PRIMARY".equals(attempt.attemptType()))
+                .findFirst()
+                .orElse(null);
 
         return new TodayQuizResponse(
                 quizSet.quizSetId(),
                 quizSet.challengeDate(),
                 quizSet.variantCode(),
                 quizSet.difficulty(),
-                attempt,
+                primaryAttempt,
+                attempts,
+                primaryAttempt != null,
                 content.passages()
         );
     }
@@ -63,7 +64,8 @@ public class QuizService {
             List<SubmittedAnswer> submittedAnswers
     ) {
         LocalDate today = LocalDate.now(clock);
-        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, today);
+        LocalDate challengeDate = resolveChallengeDate(today);
+        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
         if (quizSet.quizSetId() != quizSetId) {
             throw new ApiException(
                     HttpStatus.NOT_FOUND,
@@ -71,23 +73,35 @@ public class QuizService {
                     "Today's published quiz was not found."
             );
         }
-        if (quizSet.attemptId() != null) {
+        QuizContent content = loadAndValidateContent(quizSetId);
+        ValidatedSubmission submission = validateSubmittedAnswers(submittedAnswers, content);
+        List<QuizData.AttemptRow> existingAttempts = quizMapper.findAttempts(quizSetId, userId);
+        if (existingAttempts.stream().anyMatch(
+                attempt -> attempt.passageId() == submission.passageId())) {
             throw alreadyCompletedException();
         }
+        if (existingAttempts.size() >= PASSAGE_COUNT) {
+            throw alreadyCompletedException();
+        }
+        String attemptType = existingAttempts.isEmpty() ? "PRIMARY" : "BONUS";
 
-        QuizContent content = loadAndValidateContent(quizSetId);
         List<QuizData.AnswerKeyRow> answerKeys = quizMapper.findAnswerKeys(quizSetId);
         if (answerKeys.size() != TOTAL_QUESTIONS) {
             throw invalidQuizContentException();
         }
 
-        Map<Long, SubmittedAnswer> answersByQuestion =
-                validateSubmittedAnswers(submittedAnswers, content);
+        Map<Long, SubmittedAnswer> answersByQuestion = submission.answersByQuestion();
+        List<QuizData.AnswerKeyRow> selectedAnswerKeys = answerKeys.stream()
+                .filter(answerKey -> answersByQuestion.containsKey(answerKey.questionId()))
+                .toList();
+        if (selectedAnswerKeys.size() != QUESTIONS_PER_PASSAGE) {
+            throw invalidAnswersException();
+        }
         List<QuizData.AttemptAnswerInsert> answersToInsert = new ArrayList<>();
         List<QuestionResult> questionResults = new ArrayList<>();
         int score = 0;
 
-        for (QuizData.AnswerKeyRow answerKey : answerKeys) {
+        for (QuizData.AnswerKeyRow answerKey : selectedAnswerKeys) {
             SubmittedAnswer submittedAnswer = answersByQuestion.get(answerKey.questionId());
             boolean correct = submittedAnswer.selectedOptionId() == answerKey.correctOptionId();
             if (correct) {
@@ -112,7 +126,14 @@ public class QuizService {
 
         Instant completedAt = clock.instant();
         QuizData.QuizAttemptInsert attempt =
-                new QuizData.QuizAttemptInsert(userId, quizSetId, score, completedAt);
+                new QuizData.QuizAttemptInsert(
+                        userId,
+                        quizSetId,
+                        submission.passageId(),
+                        attemptType,
+                        score,
+                        completedAt
+                );
         try {
             quizMapper.insertAttempt(attempt);
         } catch (DataIntegrityViolationException exception) {
@@ -144,23 +165,29 @@ public class QuizService {
         return new QuizResultResponse(
                 attempt.getId(),
                 quizSetId,
+                submission.passageId(),
+                attemptType,
                 score,
-                TOTAL_QUESTIONS,
-                TOTAL_QUESTIONS - score,
+                QUESTIONS_PER_PASSAGE,
+                QUESTIONS_PER_PASSAGE - score,
                 completedAt,
                 questionResults
         );
     }
 
-    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate today) {
-        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(today, userId);
+    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate challengeDate) {
+        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
         if (quizSet == null) {
-            List<Long> candidates = quizMapper.findPublishedQuizSetIds(today, userId);
+            List<Long> candidates = quizMapper.findPublishedQuizSetIds(challengeDate, userId);
             if (!candidates.isEmpty()) {
                 int assignmentIndex = Math.floorMod(
-                        31 * Long.hashCode(userId) + today.hashCode(), candidates.size());
-                quizMapper.insertAssignment(userId, today, candidates.get(assignmentIndex));
-                quizSet = quizMapper.findTodayQuiz(today, userId);
+                        31 * Long.hashCode(userId) + challengeDate.hashCode(), candidates.size());
+                quizMapper.insertAssignment(
+                        userId,
+                        challengeDate,
+                        candidates.get(assignmentIndex)
+                );
+                quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
             }
         }
         if (quizSet == null) {
@@ -171,6 +198,29 @@ public class QuizService {
             );
         }
         return quizSet;
+    }
+
+    private List<AttemptSummary> findAttemptSummaries(long userId, long quizSetId) {
+        return quizMapper.findAttempts(quizSetId, userId).stream()
+                .map(attempt -> new AttemptSummary(
+                        attempt.attemptId(),
+                        attempt.score(),
+                        attempt.totalQuestions(),
+                        attempt.passageId(),
+                        attempt.attemptType(),
+                        attempt.completedAt()
+                ))
+                .toList();
+    }
+
+    private LocalDate resolveChallengeDate(LocalDate today) {
+        if (today.getDayOfWeek() == DayOfWeek.SATURDAY) {
+            return today.minusDays(1);
+        }
+        if (today.getDayOfWeek() == DayOfWeek.SUNDAY) {
+            return today.minusDays(2);
+        }
+        return today;
     }
 
     private QuizContent loadAndValidateContent(long quizSetId) {
@@ -198,6 +248,7 @@ public class QuizService {
         }
 
         Map<Long, List<QuestionResponse>> questionsByPassage = new LinkedHashMap<>();
+        Map<Long, Long> passageIdByQuestion = new HashMap<>();
         for (QuizData.QuestionRow question : questions) {
             List<OptionResponse> questionOptions = optionsByQuestion.get(question.questionId());
             if (questionOptions == null || questionOptions.size() != OPTIONS_PER_QUESTION) {
@@ -211,6 +262,7 @@ public class QuizService {
                             question.content(),
                             questionOptions
                     ));
+            passageIdByQuestion.put(question.questionId(), question.passageId());
         }
 
         List<PassageResponse> passageResponses = new ArrayList<>();
@@ -230,38 +282,46 @@ public class QuizService {
             ));
         }
 
-        return new QuizContent(passageResponses, optionIdsByQuestion);
+        return new QuizContent(passageResponses, optionIdsByQuestion, passageIdByQuestion);
     }
 
-    private Map<Long, SubmittedAnswer> validateSubmittedAnswers(
+    private ValidatedSubmission validateSubmittedAnswers(
             List<SubmittedAnswer> submittedAnswers,
             QuizContent content
     ) {
-        if (submittedAnswers == null || submittedAnswers.size() != TOTAL_QUESTIONS) {
+        if (submittedAnswers == null || submittedAnswers.size() != QUESTIONS_PER_PASSAGE) {
             throw invalidAnswersException();
         }
 
         Map<Long, SubmittedAnswer> answersByQuestion = new HashMap<>();
+        Long selectedPassageId = null;
         for (SubmittedAnswer answer : submittedAnswers) {
             Set<Long> optionIds = content.optionIdsByQuestion().get(answer.questionId());
+            Long passageId = content.passageIdByQuestion().get(answer.questionId());
             if (optionIds == null
+                    || passageId == null
                     || !optionIds.contains(answer.selectedOptionId())
                     || answersByQuestion.putIfAbsent(answer.questionId(), answer) != null) {
                 throw invalidAnswersException();
             }
+            if (selectedPassageId == null) {
+                selectedPassageId = passageId;
+            } else if (!selectedPassageId.equals(passageId)) {
+                throw invalidAnswersException();
+            }
         }
 
-        if (answersByQuestion.size() != TOTAL_QUESTIONS) {
+        if (answersByQuestion.size() != QUESTIONS_PER_PASSAGE || selectedPassageId == null) {
             throw invalidAnswersException();
         }
-        return answersByQuestion;
+        return new ValidatedSubmission(answersByQuestion, selectedPassageId);
     }
 
     private ApiException invalidAnswersException() {
         return new ApiException(
                 HttpStatus.BAD_REQUEST,
                 "INVALID_QUIZ_ANSWERS",
-                "Exactly one valid answer is required for every question."
+                "Exactly three valid answers from one passage are required."
         );
     }
 
@@ -283,7 +343,14 @@ public class QuizService {
 
     private record QuizContent(
             List<PassageResponse> passages,
-            Map<Long, Set<Long>> optionIdsByQuestion
+            Map<Long, Set<Long>> optionIdsByQuestion,
+            Map<Long, Long> passageIdByQuestion
+    ) {
+    }
+
+    private record ValidatedSubmission(
+            Map<Long, SubmittedAnswer> answersByQuestion,
+            long passageId
     ) {
     }
 
@@ -296,6 +363,8 @@ public class QuizService {
             String variantCode,
             String difficulty,
             AttemptSummary attempt,
+            List<AttemptSummary> attempts,
+            boolean bonusUnlocked,
             List<PassageResponse> passages
     ) {
     }
@@ -303,6 +372,9 @@ public class QuizService {
     public record AttemptSummary(
             long attemptId,
             int score,
+            int totalQuestions,
+            long passageId,
+            String attemptType,
             Instant completedAt
     ) {
     }
@@ -335,6 +407,8 @@ public class QuizService {
     public record QuizResultResponse(
             long attemptId,
             long quizSetId,
+            long passageId,
+            String attemptType,
             int score,
             int totalQuestions,
             int wrongCount,

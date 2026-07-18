@@ -38,6 +38,28 @@ jobs:
       - name: Package backend image
         run: docker save tri-read-be:latest | gzip > /tmp/tri-read-be.tar.gz
 
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+        with:
+          repository: TRI-READ/tri-read-fe
+          ref: dev
+          path: frontend
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          STATIC_EXPORT: 'true'
+        run: |
+          npm ci
+          npm run build
+
       - name: Configure SSH
         shell: bash
         env:
@@ -58,6 +80,8 @@ jobs:
             'mkdir -p ~/tri-read/frontend/out'
           scp -i ~/.ssh/oci deploy/compose.yaml deploy/Caddyfile \
             "$OCI_USER@$OCI_HOST:~/tri-read/"
+          scp -i ~/.ssh/oci -r frontend/out/. \
+            "$OCI_USER@$OCI_HOST:~/tri-read/frontend/out/"
           scp -i ~/.ssh/oci /tmp/tri-read-be.tar.gz \
             "$OCI_USER@$OCI_HOST:~/tri-read/tri-read-be.tar.gz"
 

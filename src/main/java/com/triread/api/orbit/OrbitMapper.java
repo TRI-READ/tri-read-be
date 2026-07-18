@@ -7,6 +7,8 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface OrbitMapper {
+    LocalDate findFirstAttemptDate(@Param("userId") long userId);
+
     List<OrbitData.OrbitAttemptRow> findAttempts(
             @Param("userId") long userId,
             @Param("startDate") LocalDate startDate,

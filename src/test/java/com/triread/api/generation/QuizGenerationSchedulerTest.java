@@ -52,9 +52,9 @@ class QuizGenerationSchedulerTest {
     @Test
     void keepsInventoryWhenAtLeastThreeConsecutiveWeekdaysExist() {
         stubActiveCounts(Map.of(
+                LocalDate.of(2026, 7, 13), 3,
                 LocalDate.of(2026, 7, 14), 3,
-                LocalDate.of(2026, 7, 15), 3,
-                LocalDate.of(2026, 7, 16), 3));
+                LocalDate.of(2026, 7, 15), 3));
 
         scheduler.replenishInventory();
 
@@ -64,16 +64,17 @@ class QuizGenerationSchedulerTest {
     @Test
     void replenishesMissingInventoryToSevenWeekdays() {
         stubActiveCounts(Map.of(
-                LocalDate.of(2026, 7, 14), 3,
-                LocalDate.of(2026, 7, 15), 3));
+                LocalDate.of(2026, 7, 13), 3,
+                LocalDate.of(2026, 7, 14), 3));
 
         scheduler.replenishInventory();
 
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 15));
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 16));
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 17));
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 21));
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 22));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 22));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
     }
@@ -81,14 +82,14 @@ class QuizGenerationSchedulerTest {
     @Test
     void continuesAfterOneDateFailsToGenerate() {
         stubActiveCounts(Map.of());
-        LocalDate failedDate = LocalDate.of(2026, 7, 14);
+        LocalDate failedDate = LocalDate.of(2026, 7, 13);
         doThrow(new IllegalStateException("generation failed"))
                 .when(generationService).generate(failedDate);
 
         scheduler.replenishInventory();
 
         verify(generationService).generate(failedDate);
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 22));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 21));
     }
 
     @Test
@@ -99,8 +100,23 @@ class QuizGenerationSchedulerTest {
 
         scheduler.replenishInventory();
 
-        verify(adminQuizService).recycleUnusedPublishedQuiz(LocalDate.of(2026, 7, 14));
+        verify(adminQuizService).recycleUnusedPublishedQuiz(LocalDate.of(2026, 7, 13));
         verify(generationService, never()).generate(any());
+    }
+
+    @Test
+    void startsFromMondayWhenRunOnWeekend() {
+        Clock saturdayClock = Clock.fixed(
+                Instant.parse("2026-07-18T03:00:00Z"), SEOUL);
+        scheduler = new QuizGenerationScheduler(
+                generationService, adminQuizService, properties, saturdayClock);
+        stubActiveCounts(Map.of());
+
+        scheduler.replenishInventory();
+
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
     }
 
     private void stubActiveCounts(Map<LocalDate, Integer> activeCounts) {

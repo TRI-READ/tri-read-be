@@ -44,4 +44,7 @@ public final class QuizGenerationData {
     public record ValidationResultRow(long validationResultId, long generationLogId, Long quizSetId,
                                       int attemptNumber, String validationType, boolean passed,
                                       int score, String issuesJson, Instant createdAt) {}
+
+    public record RecentPassageRow(LocalDate challengeDate, int position,
+                                   String title, String topic) {}
 }

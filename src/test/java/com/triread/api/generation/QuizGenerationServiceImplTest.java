@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -46,7 +47,8 @@ class QuizGenerationServiceImplTest {
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
-                aiGateway, properties, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
+                new QuizTopicDiversityValidator(), aiGateway, properties,
+                new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
         lenient().when(aiGateway.provider()).thenReturn("GEMINI");
         lenient().when(aiGateway.promptVersion()).thenReturn("v1");
@@ -65,7 +67,7 @@ class QuizGenerationServiceImplTest {
         QuizValidation.Result aiResult = new QuizValidation.Result(true, 96, List.of());
         AdminQuizService.QuizDetail detail = detail(7L, date, "REVIEWED");
 
-        when(aiGateway.generate(date)).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(ruleResult);
         when(aiGateway.validate(generated)).thenReturn(aiResult);
         when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model", "v1"))
@@ -89,7 +91,7 @@ class QuizGenerationServiceImplTest {
                 new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
-        when(aiGateway.generate(date)).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(failed, passed);
         when(aiGateway.validate(generated)).thenReturn(passed);
         when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
@@ -98,7 +100,7 @@ class QuizGenerationServiceImplTest {
         QuizGenerationService.GenerationResult result = service.generate(date);
 
         assertThat(result.attemptCount()).isEqualTo(2);
-        verify(aiGateway, times(2)).generate(date);
+        verify(aiGateway, times(2)).generate(eq(date), anyList());
         verify(mapper).updateLog(eq(42L), isNull(), eq("RETRYING"), eq(1), eq(70),
                 anyString(), anyString(), isNull(), eq(NOW));
     }
@@ -109,7 +111,7 @@ class QuizGenerationServiceImplTest {
         AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
-        when(aiGateway.generate(date))
+        when(aiGateway.generate(eq(date), anyList()))
                 .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
                         "GEMINI_UNAVAILABLE", "Temporarily unavailable"))
                 .thenReturn(generated);
@@ -121,7 +123,7 @@ class QuizGenerationServiceImplTest {
         QuizGenerationService.GenerationResult result = service.generate(date);
 
         assertThat(result.attemptCount()).isEqualTo(2);
-        verify(aiGateway, times(2)).generate(date);
+        verify(aiGateway, times(2)).generate(eq(date), anyList());
     }
 
     @Test

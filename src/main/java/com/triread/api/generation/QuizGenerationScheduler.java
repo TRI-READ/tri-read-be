@@ -73,7 +73,7 @@ public class QuizGenerationScheduler {
     }
 
     private List<LocalDate> upcomingWeekdays(LocalDate today) {
-        return Stream.iterate(today.plusDays(1), date -> date.plusDays(1))
+        return Stream.iterate(today, date -> date.plusDays(1))
                 .filter(this::isWeekday)
                 .limit(TARGET_INVENTORY_DAYS)
                 .toList();

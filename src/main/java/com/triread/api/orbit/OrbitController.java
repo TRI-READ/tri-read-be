@@ -27,4 +27,11 @@ public class OrbitController {
     ) {
         return orbitService.getOrbit(principal.userId(), period, anchor);
     }
+
+    @GetMapping("/streak")
+    public OrbitService.StreakResponse streak(
+            @AuthenticationPrincipal AuthPrincipal principal
+    ) {
+        return orbitService.getStreak(principal.userId());
+    }
 }

@@ -1,6 +1,7 @@
 package com.triread.api.generation;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -21,4 +22,8 @@ public interface QuizGenerationMapper {
     List<QuizGenerationData.GenerationLogRow> findLogs();
     QuizGenerationData.GenerationLogRow findLog(long generationLogId);
     List<QuizGenerationData.ValidationResultRow> findValidationResults(long generationLogId);
+    List<QuizGenerationData.RecentPassageRow> findRecentPassages(
+            @Param("targetDate") LocalDate targetDate,
+            @Param("sinceDate") LocalDate sinceDate
+    );
 }

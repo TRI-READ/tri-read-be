@@ -98,6 +98,12 @@
             SELECT qa.id AS attempt_id,
                    qa.user_id,
                    qa.score,
+                   qa.completed_at,
+                   (
+                       SELECT COUNT(*)
+                       FROM attempt_answers aa
+                       WHERE aa.attempt_id = qa.id
+                   ) AS total_questions,
                    qs.challenge_date,
                    ROW_NUMBER() OVER (
                        PARTITION BY qa.user_id
@@ -110,6 +116,7 @@
             FROM quiz_attempts qa
             JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
             WHERE qs.challenge_date BETWEEN #{startDate} AND #{endDate}
+              AND qa.attempt_type = 'PRIMARY'
         ), credited_attempts AS (
             SELECT *
             FROM ranked_attempts
@@ -118,9 +125,13 @@
             SELECT credited.user_id,
                    COUNT(*) AS completed_days,
                    COALESCE(SUM(credited.score), 0) AS total_correct,
-                   COUNT(*) FILTER (WHERE credited.score = 9) AS perfect_count,
                    COUNT(*) FILTER (
-                       WHERE credited.score = 9
+                       WHERE credited.total_questions > 0
+                         AND credited.score = credited.total_questions
+                   ) AS perfect_count,
+                   COUNT(*) FILTER (
+                       WHERE (credited.total_questions > 0
+                              AND credited.score = credited.total_questions)
                           OR NOT EXISTS (
                               SELECT 1
                               FROM answer_reviews pending_review
@@ -133,7 +144,7 @@
         ), today_stats AS (
             SELECT user_id, TRUE AS today_completed
             FROM ranked_attempts
-            WHERE challenge_date = #{today}
+            WHERE (completed_at AT TIME ZONE 'Asia/Seoul')::date = #{today}
             GROUP BY user_id
         ), recovered_stats AS (
             SELECT ar.user_id,

@@ -8,20 +8,31 @@
         SELECT qs.id AS quiz_set_id,
                qs.challenge_date,
                qs.variant_code,
-               qs.difficulty,
-               qa.id AS attempt_id,
-               qa.score AS attempt_score,
-               qa.completed_at
+               qs.difficulty
         FROM user_quiz_assignments assignment
         JOIN quiz_sets qs
           ON qs.id = assignment.quiz_set_id
          AND qs.challenge_date = assignment.challenge_date
-        LEFT JOIN quiz_attempts qa
-               ON qa.quiz_set_id = qs.id
-              AND qa.user_id = #{userId}
         WHERE assignment.challenge_date = #{challengeDate}
           AND assignment.user_id = #{userId}
           AND qs.status = 'PUBLISHED'
+    </select>
+
+    <select id="findAttempts" resultType="com.triread.api.quiz.QuizData$AttemptRow">
+        SELECT qa.id AS attempt_id,
+               qa.score,
+               COUNT(aa.question_id) AS total_questions,
+               qa.passage_id,
+               qa.attempt_type,
+               qa.completed_at
+        FROM quiz_attempts qa
+        LEFT JOIN attempt_answers aa ON aa.attempt_id = qa.id
+        WHERE qa.quiz_set_id = #{quizSetId}
+          AND qa.user_id = #{userId}
+        GROUP BY qa.id
+        ORDER BY CASE qa.attempt_type WHEN 'PRIMARY' THEN 0 ELSE 1 END,
+                 qa.completed_at,
+                 qa.id
     </select>
 
     <select id="findPublishedQuizSetIds" resultType="long">
@@ -97,12 +108,16 @@
         INSERT INTO quiz_attempts (
             user_id,
             quiz_set_id,
+            passage_id,
+            attempt_type,
             score,
             completed_at
         )
         VALUES (
             #{userId},
             #{quizSetId},
+            #{passageId},
+            #{attemptType},
             #{score},
             #{completedAt}
         )

@@ -58,4 +58,15 @@
         WHERE generation_log_id = #{generationLogId}
         ORDER BY attempt_number, created_at, id
     </select>
+
+    <select id="findRecentPassages"
+            resultType="com.triread.api.generation.QuizGenerationData$RecentPassageRow">
+        SELECT qs.challenge_date, p.position, p.title, p.topic
+        FROM quiz_sets qs
+        JOIN passages p ON p.quiz_set_id = qs.id
+        WHERE qs.challenge_date BETWEEN #{sinceDate} AND #{targetDate}
+          AND qs.status IN ('DRAFT', 'REVIEWED', 'PUBLISHED')
+        ORDER BY qs.challenge_date DESC, qs.id DESC, p.position
+        LIMIT 100
+    </select>
 </mapper>

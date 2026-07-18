@@ -13,6 +13,11 @@ public interface QuizMapper {
             @Param("userId") long userId
     );
 
+    List<QuizData.AttemptRow> findAttempts(
+            @Param("quizSetId") long quizSetId,
+            @Param("userId") long userId
+    );
+
     List<Long> findPublishedQuizSetIds(
             @Param("challengeDate") LocalDate challengeDate,
             @Param("userId") long userId

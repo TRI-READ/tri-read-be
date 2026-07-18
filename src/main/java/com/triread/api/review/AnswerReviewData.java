@@ -23,6 +23,7 @@ public final class AnswerReviewData {
             LocalDate challengeDate,
             String passageTitle,
             String passageTopic,
+            String passageContent,
             short questionPosition,
             String questionContent,
             long selectedOptionId,

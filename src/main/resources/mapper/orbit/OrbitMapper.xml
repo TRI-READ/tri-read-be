@@ -3,10 +3,24 @@
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.triread.api.orbit.OrbitMapper">
+    <select id="findFirstAttemptDate" resultType="java.time.LocalDate">
+        SELECT MIN(qs.challenge_date)
+        FROM quiz_attempts qa
+        JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
+        WHERE qa.user_id = #{userId}
+          AND qa.attempt_type = 'PRIMARY'
+    </select>
+
     <select id="findAttempts" resultType="com.triread.api.orbit.OrbitData$OrbitAttemptRow">
         SELECT qs.challenge_date,
+               (qa.completed_at AT TIME ZONE 'Asia/Seoul')::date AS completed_date,
                qa.score,
-               9 - qa.score AS wrong_count,
+               (
+                   SELECT COUNT(*)
+                   FROM attempt_answers aa
+                   WHERE aa.attempt_id = qa.id
+                     AND aa.is_correct = FALSE
+               ) AS wrong_count,
                COUNT(ar.id) FILTER (WHERE ar.review_status = 'RECOVERED') AS recovered_count
         FROM quiz_attempts qa
         JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
@@ -14,8 +28,9 @@
                ON ar.source_attempt_id = qa.id
               AND ar.user_id = qa.user_id
         WHERE qa.user_id = #{userId}
+          AND qa.attempt_type = 'PRIMARY'
           AND qs.challenge_date BETWEEN #{startDate} AND #{endDate}
-        GROUP BY qs.challenge_date, qa.id, qa.score
+        GROUP BY qs.challenge_date, qa.id, qa.score, qa.completed_at
         ORDER BY qs.challenge_date
     </select>
 </mapper>

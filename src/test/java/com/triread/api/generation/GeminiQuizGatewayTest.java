@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.triread.api.common.ApiException;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
@@ -26,6 +27,7 @@ class GeminiQuizGatewayTest {
 
         assertThat(properties.getGemini().getGenerationModel()).isEqualTo("gemini-3.1-flash-lite");
         assertThat(properties.getGemini().getValidationModel()).isEqualTo("gemini-3.1-flash-lite");
+        assertThat(properties.getGemini().getPromptVersion()).isEqualTo("v2");
     }
 
     @Test
@@ -49,9 +51,24 @@ class GeminiQuizGatewayTest {
 
     @Test
     void rejectsGenerationWhenApiKeyIsMissing() {
-        assertThatThrownBy(() -> gateway().generate(LocalDate.of(2026, 7, 13)))
+        assertThatThrownBy(() -> gateway().generate(LocalDate.of(2026, 7, 13), List.of()))
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo("GEMINI_API_KEY_MISSING"));
+    }
+
+    @Test
+    void includesRecentPassagesAsExplicitTopicExclusions() {
+        GeminiQuizGateway gateway = gateway();
+
+        String input = gateway.generationInput(LocalDate.of(2026, 7, 16), List.of(
+                new QuizGenerationData.RecentPassageRow(
+                        LocalDate.of(2026, 7, 15), 2,
+                        "Quantum computing and information processing", "Science")));
+
+        assertThat(input)
+                .contains("Changing only the title or angle still counts as reuse")
+                .contains("Quantum computing and information processing")
+                .contains("area 2");
     }
 
     private GeminiQuizGateway gateway() {
