@@ -1,6 +1,7 @@
 name: Backend CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - dev
@@ -31,4 +32,3 @@ jobs:
 
       - name: Test
         run: gradle test
-
