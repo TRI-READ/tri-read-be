@@ -30,5 +30,9 @@ jobs:
         with:
           gradle-version: 9.0.0
 
+      - name: Validate operations scripts
+        shell: bash
+        run: bash -n deploy/backup-db.sh deploy/restore-db.sh deploy/smoke-test.sh
+
       - name: Test
         run: gradle test

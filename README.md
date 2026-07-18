@@ -113,6 +113,8 @@ GET  /api/groups/{groupId}/activity
 
 퀴즈 제출 요청은 한 지문에 속한 정확히 3개의 답을 포함해야 합니다. 첫 제출은 `PRIMARY`, 이후 다른 지문의 제출은 `BONUS`로 저장됩니다.
 
+`PRIMARY` 제출 하나가 그날의 필수 학습과 스트릭을 완료합니다. `BONUS` 제출은 같은 날짜의 추가 학습 기록으로만 저장되며 스트릭을 중복 증가시키지 않습니다. 한 지문은 한 번만 제출할 수 있어 하루 최대 3개의 응시와 9개의 문항 답안이 저장됩니다.
+
 ## 관리자와 문제 생성
 
 관리자는 퀴즈 초안을 작성하거나 Gemini로 생성한 문제를 검수한 뒤 발행할 수 있습니다. 서버는 퀴즈 한 세트가 지문 3개, 지문별 문제 3개, 문제별 선택지 4개인지 검증합니다.
@@ -153,6 +155,32 @@ docker compose up --build -d
 ```
 
 `dev` 브랜치에서 개발하고 CI를 통과한 변경을 PR로 `main`에 승격합니다. `main`은 백엔드 배포 기준 브랜치이며, 백엔드 배포는 프론트엔드 빌드나 정적 파일을 포함하지 않습니다. 프론트엔드는 별도 저장소의 `main`과 배포 워크플로에서 독립적으로 배포합니다.
+
+배포가 끝나면 워크플로가 운영 홈페이지와 `/api/health`를 호출합니다. 두 응답 중 하나라도 비정상이면 배포 작업을 실패로 표시합니다.
+
+## DB 백업과 복원
+
+`Backup production database` GitHub Actions 워크플로는 매일 한국 시간 오전 2시 30분에 PostgreSQL custom-format dump를 생성합니다. dump는 `BACKUP_ENCRYPTION_KEY`로 AES-256 암호화한 뒤 GitHub Actions artifact에 14일 동안 보관하며, 암호화 전 원본은 runner에서 즉시 삭제합니다.
+
+필요한 GitHub Actions secret은 다음과 같습니다.
+
+```text
+OCI_HOST
+OCI_USER
+OCI_SSH_PRIVATE_KEY
+BACKUP_ENCRYPTION_KEY
+```
+
+복원은 먼저 Actions에서 `.dump.enc` artifact를 받아 OCI의 `~/tri-read`로 옮긴 뒤 실행합니다. 현재 DB를 교체하는 작업이므로 `--confirm` 없이는 실행되지 않으며, 복원 직전에 VM에도 안전 dump를 하나 남깁니다.
+
+```bash
+cd ~/tri-read
+export BACKUP_ENCRYPTION_KEY='백업에 사용한 값'
+./restore-db.sh ./tri-read-YYYYMMDDTHHMMSSZ.dump.enc --confirm
+unset BACKUP_ENCRYPTION_KEY
+```
+
+복원 완료 후 `https://tri-read.duckdns.org/api/health`와 로그인·퀴즈 조회를 확인합니다. 암호화 키를 잃으면 백업을 복원할 수 없으므로 GitHub secret과 별도로 안전한 암호 관리자에도 보관합니다.
 
 ## 저장소
 

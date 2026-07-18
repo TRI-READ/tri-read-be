@@ -55,6 +55,7 @@ jobs:
         shell: bash
         run: |
           scp -i ~/.ssh/oci deploy/compose.yaml deploy/Caddyfile \
+            deploy/backup-db.sh deploy/restore-db.sh \
             "$OCI_USER@$OCI_HOST:~/tri-read/"
           scp -i ~/.ssh/oci /tmp/tri-read-be.tar.gz \
             "$OCI_USER@$OCI_HOST:~/tri-read/tri-read-be.tar.gz"
@@ -71,4 +72,9 @@ jobs:
             rm tri-read-be.tar.gz
             docker image prune -f
             docker compose --env-file .env -f compose.yaml ps
+            chmod 700 backup-db.sh restore-db.sh
           '
+
+      - name: Smoke test production
+        shell: bash
+        run: bash deploy/smoke-test.sh
