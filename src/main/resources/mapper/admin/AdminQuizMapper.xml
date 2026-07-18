@@ -4,6 +4,13 @@
     <select id="findQuizzes" resultType="com.triread.api.admin.AdminQuizData$QuizRow">
         SELECT id AS quiz_set_id, challenge_date, variant_code, status, created_at, published_at
         FROM quiz_sets ORDER BY challenge_date DESC NULLS LAST, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countQuizzes" resultType="long">
+        SELECT COUNT(*) FROM quiz_sets
+    </select>
+    <select id="countPendingQuizzes" resultType="long">
+        SELECT COUNT(*) FROM quiz_sets WHERE status IN ('DRAFT', 'REVIEWED')
     </select>
     <select id="findQuiz" resultType="com.triread.api.admin.AdminQuizData$QuizRow">
         SELECT id AS quiz_set_id, challenge_date, variant_code, status, created_at, published_at

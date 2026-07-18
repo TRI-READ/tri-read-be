@@ -87,6 +87,18 @@ class QuizTopicDiversityValidatorTest {
         }
     }
 
+    @Test
+    void allowsDifferentSubjectsInsideTheSameDiscipline() {
+        AdminQuizService.CreateQuiz quiz = quizWithFirstPassage(
+                "압전 효과와 유연 소자의 에너지 수확 원리", "재료공학");
+        List<QuizGenerationData.RecentPassageRow> recent = List.of(
+                new QuizGenerationData.RecentPassageRow(
+                        LocalDate.of(2026, 7, 15), 1,
+                        "고분자 반도체와 유기 전자 소자의 발전", "재료공학"));
+
+        assertThat(validator.validate(quiz, recent).passed()).isTrue();
+    }
+
     private AdminQuizService.CreateQuiz quizWithFirstTitle(String title) {
         AdminQuizService.CreateQuiz valid = RuleBasedQuizValidatorTest.validQuiz();
         return quizWithFirstPassage(title, valid.passages().getFirst().topic());

@@ -1,6 +1,7 @@
 package com.triread.api.admin;
 
 import com.triread.api.common.ApiException;
+import com.triread.api.common.PageResponse;
 import com.triread.api.quiz.QuizData;
 import com.triread.api.quiz.QuizMapper;
 import java.time.Clock;
@@ -32,8 +33,14 @@ public class AdminQuizService {
     }
 
     @Transactional(readOnly = true)
-    public List<QuizSummary> getQuizzes() {
-        return adminQuizMapper.findQuizzes().stream().map(QuizSummary::from).toList();
+    public QuizPage getQuizzes(int requestedPage, int requestedSize) {
+        int page = PageResponse.page(requestedPage);
+        int size = PageResponse.size(requestedSize);
+        long total = adminQuizMapper.countQuizzes();
+        List<QuizSummary> quizzes = adminQuizMapper.findQuizzes(page * size, size).stream()
+                .map(QuizSummary::from).toList();
+        return new QuizPage(PageResponse.of(quizzes, page, size, total),
+                adminQuizMapper.countPendingQuizzes());
     }
 
     @Transactional(readOnly = true)
@@ -232,6 +239,7 @@ public class AdminQuizService {
                     row.status(), row.createdAt(), row.publishedAt());
         }
     }
+    public record QuizPage(PageResponse<QuizSummary> page, long pendingCount) {}
     public record QuizDetail(QuizSummary quiz, List<PassageDetail> passages) {}
     public record PassageDetail(long passageId, int position, String title, String topic, String content, List<QuestionDetail> questions) {}
     public record QuestionDetail(long questionId, int position, String content, List<OptionDetail> options, int correctOptionPosition, String explanation, String evidence) {}

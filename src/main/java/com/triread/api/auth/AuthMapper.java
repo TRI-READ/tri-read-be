@@ -12,7 +12,9 @@ public interface AuthMapper {
 
     AuthUser findById(long userId);
 
-    List<AuthUser> findAll();
+    List<AuthUser> findAll(@Param("offset") int offset, @Param("limit") int limit);
+
+    long countAll();
 
     int insert(AuthUser user);
 

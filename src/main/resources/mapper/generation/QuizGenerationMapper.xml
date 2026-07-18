@@ -41,7 +41,17 @@
         SELECT <include refid="logColumns"/>
         FROM generation_logs
         ORDER BY created_at DESC
-        LIMIT 100
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countLogs" resultType="long">
+        SELECT COUNT(*) FROM generation_logs
+    </select>
+
+    <select id="getStats" resultType="com.triread.api.generation.QuizGenerationData$GenerationStats">
+        SELECT COUNT(*) FILTER (WHERE status IN ('READY', 'PUBLISHED')) AS success_count,
+               COUNT(*) FILTER (WHERE status = 'FAILED') AS failure_count
+        FROM generation_logs
     </select>
 
     <select id="findLog" resultType="com.triread.api.generation.QuizGenerationData$GenerationLogRow">

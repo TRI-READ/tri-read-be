@@ -5,6 +5,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.common.PageResponse;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -74,8 +75,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
 
                 QuizValidation.Result ruleResult = ruleValidator.validate(generated);
+                saveValidation(logId, null, attempt, "RULE", ruleResult);
                 if (!passes(ruleResult)) {
-                    saveValidation(logId, null, attempt, "RULE", ruleResult);
                     latestError = summarize(ruleResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, ruleResult.score(), latestRaw, latestError,
@@ -85,9 +86,9 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
                 QuizValidation.Result diversityResult = topicDiversityValidator.validate(
                         generated, excludedPassages);
+                saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
                 excludedPassages.addAll(toRecentPassages(generated));
                 if (!passes(diversityResult)) {
-                    saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
                     latestError = summarize(diversityResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, diversityResult.score(), latestRaw, latestError,
@@ -96,10 +97,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 }
 
                 QuizValidation.Result aiResult = aiGateway.validate(generated);
-                int finalScore = Math.min(ruleResult.score(), aiResult.score());
+                saveValidation(logId, null, attempt, "AI", aiResult);
+                int finalScore = Math.min(Math.min(ruleResult.score(), diversityResult.score()),
+                        aiResult.score());
                 if (!passes(aiResult)) {
-                    saveValidation(logId, null, attempt, "RULE", ruleResult);
-                    saveValidation(logId, null, attempt, "AI", aiResult);
                     latestError = summarize(aiResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, finalScore, latestRaw, latestError,
@@ -111,9 +112,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                         generated, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion());
                 long quizSetId = quiz.quiz().quizSetId();
                 persistedQuizId = quizSetId;
-                saveValidation(logId, quizSetId, attempt, "RULE", ruleResult);
-                saveValidation(logId, quizSetId, attempt, "AI", aiResult);
-
                 boolean autoPublished = properties.isAutoPublish();
                 if (autoPublished) quiz = adminQuizService.publish(quizSetId);
                 String status = autoPublished ? "PUBLISHED" : "READY";
@@ -226,8 +224,14 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<QuizGenerationData.GenerationLogRow> getLogs() {
-        return mapper.findLogs();
+    public GenerationLogPage getLogs(int requestedPage, int requestedSize) {
+        int page = PageResponse.page(requestedPage);
+        int size = PageResponse.size(requestedSize);
+        long total = mapper.countLogs();
+        List<QuizGenerationData.GenerationLogRow> logs = mapper.findLogs(page * size, size);
+        QuizGenerationData.GenerationStats stats = mapper.getStats();
+        return new GenerationLogPage(PageResponse.of(logs, page, size, total),
+                stats.successCount(), stats.failureCount());
     }
 
     @Override

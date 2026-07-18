@@ -19,7 +19,10 @@ public interface QuizGenerationMapper {
                    @Param("completedAt") Instant completedAt,
                    @Param("updatedAt") Instant updatedAt);
     void insertValidationResult(QuizGenerationData.ValidationResultInsert result);
-    List<QuizGenerationData.GenerationLogRow> findLogs();
+    List<QuizGenerationData.GenerationLogRow> findLogs(@Param("offset") int offset,
+                                                        @Param("limit") int limit);
+    long countLogs();
+    QuizGenerationData.GenerationStats getStats();
     QuizGenerationData.GenerationLogRow findLog(long generationLogId);
     List<QuizGenerationData.ValidationResultRow> findValidationResults(long generationLogId);
     List<QuizGenerationData.RecentPassageRow> findRecentPassages(

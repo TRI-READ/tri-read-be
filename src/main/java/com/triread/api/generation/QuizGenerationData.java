@@ -37,6 +37,8 @@ public final class QuizGenerationData {
                                    String errorMessage, Instant createdAt, Instant updatedAt,
                                    Instant completedAt) {}
 
+    public record GenerationStats(long successCount, long failureCount) {}
+
     public record ValidationResultInsert(long generationLogId, Long quizSetId, int attemptNumber,
                                          String validationType, boolean passed,
                                          int score, String issuesJson) {}

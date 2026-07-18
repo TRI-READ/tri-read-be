@@ -47,6 +47,25 @@ class AdminQuizServiceTest {
     }
 
     @Test
+    void listsQuizDraftsWithServerSidePagination() {
+        Instant createdAt = Instant.parse("2026-07-12T03:00:00Z");
+        when(adminQuizMapper.countQuizzes()).thenReturn(14L);
+        when(adminQuizMapper.countPendingQuizzes()).thenReturn(8L);
+        when(adminQuizMapper.findQuizzes(6, 6)).thenReturn(List.of(
+                new AdminQuizData.QuizRow(7L, LocalDate.of(2026, 7, 19),
+                        "B", "REVIEWED", createdAt, null)));
+
+        AdminQuizService.QuizPage result = service.getQuizzes(1, 6);
+
+        assertThat(result.page().items()).singleElement()
+                .extracting(AdminQuizService.QuizSummary::quizSetId)
+                .isEqualTo(7L);
+        assertThat(result.page().page()).isEqualTo(1);
+        assertThat(result.page().totalPages()).isEqualTo(3);
+        assertThat(result.pendingCount()).isEqualTo(8);
+    }
+
+    @Test
     void publishAllowsAnotherVariantForTheSameDate() {
         long quizId = 11L;
         LocalDate date = LocalDate.of(2026, 7, 12);

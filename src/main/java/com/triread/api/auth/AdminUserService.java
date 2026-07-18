@@ -1,6 +1,7 @@
 package com.triread.api.auth;
 
 import com.triread.api.common.ApiException;
+import com.triread.api.common.PageResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -19,8 +20,13 @@ public class AdminUserService {
     }
 
     @Transactional(readOnly = true)
-    public List<UserSummary> getUsers() {
-        return authMapper.findAll().stream().map(UserSummary::from).toList();
+    public PageResponse<UserSummary> getUsers(int requestedPage, int requestedSize) {
+        int page = PageResponse.page(requestedPage);
+        int size = PageResponse.size(requestedSize);
+        long total = authMapper.countAll();
+        List<UserSummary> users = authMapper.findAll(page * size, size).stream()
+                .map(UserSummary::from).toList();
+        return PageResponse.of(users, page, size, total);
     }
 
     @Transactional

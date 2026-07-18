@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -26,7 +27,13 @@ public class AdminQuizController {
     private final AdminQuizService service;
     public AdminQuizController(AdminQuizService service) { this.service = service; }
 
-    @GetMapping public List<AdminQuizService.QuizSummary> list() { return service.getQuizzes(); }
+    @GetMapping
+    public AdminQuizService.QuizPage list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "6") int size
+    ) {
+        return service.getQuizzes(page, size);
+    }
     @GetMapping("/{quizSetId}") public AdminQuizService.QuizDetail detail(@Positive @PathVariable long quizSetId) { return service.getQuiz(quizSetId); }
     @PostMapping public ResponseEntity<AdminQuizService.QuizDetail> create(@Valid @RequestBody CreateQuizRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.createDraft(toCommand(request)));

@@ -97,7 +97,10 @@ public class QuizTopicDiversityValidator {
                 .map(this::stripParticle)
                 .filter(term -> !term.isBlank())
                 .collect(Collectors.toSet());
-        return topicTerms.isEmpty() || !BROAD_AREA_TERMS.containsAll(topicTerms);
+        Set<String> specificTerms = topicTerms.stream()
+                .filter(term -> !BROAD_AREA_TERMS.contains(term))
+                .collect(Collectors.toSet());
+        return specificTerms.size() >= 2;
     }
 
     boolean similarTitle(String left, String right) {

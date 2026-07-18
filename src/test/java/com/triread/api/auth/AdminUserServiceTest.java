@@ -21,9 +21,10 @@ class AdminUserServiceTest {
     @Test
     void listsUsersWithoutExposingPinHashes() {
         AdminUserService service = new AdminUserService(authMapper);
-        when(authMapper.findAll()).thenReturn(List.of(user(2L, "reader", "USER")));
+        when(authMapper.countAll()).thenReturn(1L);
+        when(authMapper.findAll(0, 10)).thenReturn(List.of(user(2L, "reader", "USER")));
 
-        assertThat(service.getUsers()).singleElement().satisfies(summary -> {
+        assertThat(service.getUsers(0, 10).items()).singleElement().satisfies(summary -> {
             assertThat(summary.loginName()).isEqualTo("reader");
             assertThat(summary.role()).isEqualTo("USER");
         });
