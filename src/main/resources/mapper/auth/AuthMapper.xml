@@ -10,9 +10,23 @@
                display_name,
                pin_hash,
                app_role,
-               enabled
+               enabled,
+               created_at,
+               last_login_at
         FROM app_users
         WHERE login_name = #{loginName}
+    </select>
+
+    <select id="findById" resultType="com.triread.api.auth.AuthUser">
+        SELECT id, login_name, display_name, pin_hash, app_role, enabled, created_at, last_login_at
+        FROM app_users
+        WHERE id = #{userId}
+    </select>
+
+    <select id="findAll" resultType="com.triread.api.auth.AuthUser">
+        SELECT id, login_name, display_name, pin_hash, app_role, enabled, created_at, last_login_at
+        FROM app_users
+        ORDER BY created_at, id
     </select>
 
     <insert id="insert"
@@ -40,6 +54,28 @@
         UPDATE app_users
         SET last_login_at = #{lastLoginAt}
         WHERE id = #{userId}
+    </update>
+
+    <update id="updateRole">
+        UPDATE app_users
+        SET app_role = #{appRole}
+        WHERE id = #{userId}
+          AND enabled = TRUE
+    </update>
+
+    <select id="countEnabledAdmins" resultType="int">
+        SELECT COUNT(*)
+        FROM app_users
+        WHERE app_role = 'ADMIN'
+          AND enabled = TRUE
+    </select>
+
+    <update id="promoteBootstrapAdmin">
+        UPDATE app_users
+        SET app_role = 'ADMIN'
+        WHERE login_name = #{loginName}
+          AND enabled = TRUE
+          AND app_role &lt;&gt; 'ADMIN'
     </update>
 
 </mapper>

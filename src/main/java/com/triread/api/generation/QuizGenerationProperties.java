@@ -13,6 +13,7 @@ public class QuizGenerationProperties {
     private int variantsPerDate = 3;
     private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
+    private String recoveryCron = "0 30 5 * * *";
     private final Gemini gemini = new Gemini();
 
     public boolean isEnabled() { return enabled; }
@@ -29,6 +30,8 @@ public class QuizGenerationProperties {
     public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }
     public void setCron(String cron) { this.cron = cron; }
+    public String getRecoveryCron() { return recoveryCron; }
+    public void setRecoveryCron(String recoveryCron) { this.recoveryCron = recoveryCron; }
     public Gemini getGemini() { return gemini; }
 
     public static class Gemini {
