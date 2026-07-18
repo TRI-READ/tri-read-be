@@ -48,6 +48,13 @@
         SELECT COUNT(*) FROM generation_logs
     </select>
 
+    <select id="countLogsCreatedBetween" resultType="long">
+        SELECT COUNT(*)
+        FROM generation_logs
+        WHERE created_at &gt;= #{from}
+          AND created_at &lt; #{until}
+    </select>
+
     <select id="getStats" resultType="com.triread.api.generation.QuizGenerationData$GenerationStats">
         SELECT COUNT(*) FILTER (WHERE status IN ('READY', 'PUBLISHED')) AS success_count,
                COUNT(*) FILTER (WHERE status = 'FAILED') AS failure_count

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.triread.api.admin.AdminQuizService;
+import com.triread.api.common.ApiException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
 class QuizGenerationSchedulerTest {
@@ -36,6 +38,8 @@ class QuizGenerationSchedulerTest {
         properties = new QuizGenerationProperties();
         properties.setEnabled(true);
         properties.setVariantsPerDate(3);
+        properties.setInventoryDays(3);
+        properties.setMaxJobsPerRun(3);
         scheduler = new QuizGenerationScheduler(
                 generationService, adminQuizService, properties, MONDAY_CLOCK);
     }
@@ -50,7 +54,7 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void keepsInventoryWhenAtLeastThreeConsecutiveWeekdaysExist() {
+    void keepsInventoryWhenConfiguredWeekdaysAreFull() {
         stubActiveCounts(Map.of(
                 LocalDate.of(2026, 7, 13), 3,
                 LocalDate.of(2026, 7, 14), 3,
@@ -62,7 +66,7 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void replenishesMissingInventoryToSevenWeekdays() {
+    void startsAtMostThreeGenerationJobsPerRun() {
         stubActiveCounts(Map.of(
                 LocalDate.of(2026, 7, 13), 3,
                 LocalDate.of(2026, 7, 14), 3));
@@ -70,17 +74,11 @@ class QuizGenerationSchedulerTest {
         scheduler.replenishInventory();
 
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 15));
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 16));
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 17));
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 21));
-        verify(generationService, never()).generate(LocalDate.of(2026, 7, 22));
-        verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
-        verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 16));
     }
 
     @Test
-    void continuesAfterOneDateFailsToGenerate() {
+    void failedJobStillConsumesRunBudget() {
         stubActiveCounts(Map.of());
         LocalDate failedDate = LocalDate.of(2026, 7, 13);
         doThrow(new IllegalStateException("generation failed"))
@@ -89,7 +87,22 @@ class QuizGenerationSchedulerTest {
         scheduler.replenishInventory();
 
         verify(generationService).generate(failedDate);
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 21));
+        verify(generationService, times(2)).generate(LocalDate.of(2026, 7, 14));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 15));
+    }
+
+    @Test
+    void stopsImmediatelyWhenDailyBudgetIsExhausted() {
+        stubActiveCounts(Map.of());
+        LocalDate firstDate = LocalDate.of(2026, 7, 13);
+        doThrow(new ApiException(HttpStatus.TOO_MANY_REQUESTS,
+                "QUIZ_GENERATION_DAILY_LIMIT_REACHED", "Daily limit reached"))
+                .when(generationService).generate(firstDate);
+
+        scheduler.replenishInventory();
+
+        verify(generationService).generate(firstDate);
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 14));
     }
 
     @Test
@@ -115,8 +128,22 @@ class QuizGenerationSchedulerTest {
         scheduler.replenishInventory();
 
         verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 21));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
+    }
+
+    @Test
+    void onlyChecksConfiguredInventoryDays() {
+        properties.setInventoryDays(2);
+        stubActiveCounts(Map.of(
+                LocalDate.of(2026, 7, 13), 3,
+                LocalDate.of(2026, 7, 14), 3));
+
+        scheduler.replenishInventory();
+
+        verify(adminQuizService, never()).countActiveQuizSets(LocalDate.of(2026, 7, 15));
+        verify(generationService, never()).generate(any());
     }
 
     @Test

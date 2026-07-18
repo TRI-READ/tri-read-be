@@ -8,9 +8,12 @@ import org.springframework.stereotype.Component;
 public class QuizGenerationProperties {
     private boolean enabled;
     private boolean autoPublish;
-    private int maxAttempts = 3;
+    private int maxAttempts = 2;
     private int passScore = 90;
     private int variantsPerDate = 3;
+    private int inventoryDays = 3;
+    private int maxJobsPerRun = 3;
+    private int maxJobsPerDay = 3;
     private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
     private String recoveryCron = "0 30 5 * * *";
@@ -26,6 +29,12 @@ public class QuizGenerationProperties {
     public void setPassScore(int passScore) { this.passScore = passScore; }
     public int getVariantsPerDate() { return variantsPerDate; }
     public void setVariantsPerDate(int variantsPerDate) { this.variantsPerDate = variantsPerDate; }
+    public int getInventoryDays() { return inventoryDays; }
+    public void setInventoryDays(int inventoryDays) { this.inventoryDays = inventoryDays; }
+    public int getMaxJobsPerRun() { return maxJobsPerRun; }
+    public void setMaxJobsPerRun(int maxJobsPerRun) { this.maxJobsPerRun = maxJobsPerRun; }
+    public int getMaxJobsPerDay() { return maxJobsPerDay; }
+    public void setMaxJobsPerDay(int maxJobsPerDay) { this.maxJobsPerDay = maxJobsPerDay; }
     public long getRetryDelayMs() { return retryDelayMs; }
     public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }
