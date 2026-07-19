@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.audit.AdminAuditMapper">
+    <insert id="insert">
+        INSERT INTO admin_audit_logs (actor_user_id, action, target_type, target_id, details_json)
+        VALUES (#{actorUserId}, #{action}, #{targetType}, #{targetId}, CAST(#{detailsJson} AS JSONB))
+    </insert>
+    <select id="findAll" resultType="com.triread.api.audit.AdminAuditData$AuditRow">
+        SELECT aal.id AS audit_log_id, aal.actor_user_id, au.login_name AS actor_login_name,
+               aal.action, aal.target_type, aal.target_id, aal.details_json::TEXT AS details_json,
+               aal.created_at
+        FROM admin_audit_logs aal
+        LEFT JOIN app_users au ON au.id = aal.actor_user_id
+        ORDER BY aal.created_at DESC, aal.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+    <select id="countAll" resultType="long">SELECT COUNT(*) FROM admin_audit_logs</select>
+</mapper>

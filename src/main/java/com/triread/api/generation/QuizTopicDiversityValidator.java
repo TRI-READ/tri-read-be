@@ -79,6 +79,7 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreatePassage passage,
             QuizGenerationData.RecentPassageRow recent
     ) {
+        if (contentSimilarity(passage.content(), recent.content()) >= 0.68) return true;
         if (similarTitle(passage.title(), recent.title())) return true;
 
         boolean generatedTopicSpecific = isSpecificTopic(passage.topic());
@@ -87,6 +88,32 @@ public class QuizTopicDiversityValidator {
                 && similarTitle(passage.topic(), recent.topic())) return true;
         if (generatedTopicSpecific && similarTitle(passage.topic(), recent.title())) return true;
         return recentTopicSpecific && similarTitle(passage.title(), recent.topic());
+    }
+
+    double contentSimilarity(String left, String right) {
+        String normalizedLeft = normalizeCompact(left);
+        String normalizedRight = normalizeCompact(right);
+        if (Math.min(normalizedLeft.length(), normalizedRight.length()) < 200) return 0;
+        Set<String> leftGrams = grams(normalizedLeft, 4);
+        Set<String> rightGrams = grams(normalizedRight, 4);
+        Set<String> intersection = new HashSet<>(leftGrams);
+        intersection.retainAll(rightGrams);
+        Set<String> union = new HashSet<>(leftGrams);
+        union.addAll(rightGrams);
+        return union.isEmpty() ? 0 : (double) intersection.size() / union.size();
+    }
+
+    private Set<String> grams(String value, int size) {
+        Set<String> result = new HashSet<>();
+        for (int index = 0; index <= value.length() - size; index++) {
+            result.add(value.substring(index, index + size));
+        }
+        return result;
+    }
+
+    private String normalizeCompact(String value) {
+        if (value == null) return "";
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     private boolean isSpecificTopic(String topic) {

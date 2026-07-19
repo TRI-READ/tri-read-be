@@ -56,5 +56,28 @@ public final class QuizGenerationData {
                                       int score, String issuesJson, Instant createdAt) {}
 
     public record RecentPassageRow(LocalDate challengeDate, int position,
-                                   String title, String topic) {}
+                                   String title, String topic, String content) {}
+
+    public static final class ApiCallInsert {
+        private Long id;
+        private final long generationLogId;
+        private final String provider;
+        private final String model;
+        private final String purpose;
+
+        public ApiCallInsert(long generationLogId, String provider, String model, String purpose) {
+            this.generationLogId = generationLogId;
+            this.provider = provider;
+            this.model = model;
+            this.purpose = purpose;
+        }
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public long getGenerationLogId() { return generationLogId; }
+        public String getProvider() { return provider; }
+        public String getModel() { return model; }
+        public String getPurpose() { return purpose; }
+    }
+
+    public record ApiUsageStats(long totalCount, long successCount, long failureCount) {}
 }

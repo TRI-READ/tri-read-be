@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,14 +61,34 @@ public class LoginAttemptService {
         }
         attempts.compute(key, (ignored, current) -> {
             if (current == null || current.expiresAt().isBefore(now)) {
-                return new AttemptWindow(1, now.plus(window));
+                return new AttemptWindow(1, now.plus(window), normalizeAddress(clientAddress),
+                        normalizeLogin(loginName));
             }
-            return new AttemptWindow(current.failures() + 1, current.expiresAt());
+            return new AttemptWindow(current.failures() + 1, current.expiresAt(),
+                    current.clientAddress(), current.loginName());
         });
     }
 
     public void recordSuccess(String clientAddress, String loginName) {
         attempts.remove(key(clientAddress, loginName));
+    }
+
+    public List<LoginLockSummary> getLockedAttempts() {
+        Instant now = clock.instant();
+        attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
+        return attempts.values().stream()
+                .filter(attempt -> attempt.failures() >= maxFailures)
+                .map(attempt -> new LoginLockSummary(attempt.loginName(),
+                        maskAddress(attempt.clientAddress()), attempt.failures(), attempt.expiresAt()))
+                .sorted((left, right) -> right.expiresAt().compareTo(left.expiresAt()))
+                .toList();
+    }
+
+    public int clearLogin(String loginName) {
+        String normalized = normalizeLogin(loginName);
+        int before = attempts.size();
+        attempts.entrySet().removeIf(entry -> entry.getValue().loginName().equals(normalized));
+        return before - attempts.size();
     }
 
     private void removeExpired(Instant now) {
@@ -78,11 +99,24 @@ public class LoginAttemptService {
     }
 
     private String key(String clientAddress, String loginName) {
-        String normalizedAddress = clientAddress == null ? "unknown" : clientAddress;
-        String normalizedLoginName = loginName == null
-                ? ""
-                : loginName.trim().toLowerCase(Locale.ROOT);
-        return normalizedAddress + ':' + normalizedLoginName;
+        return normalizeAddress(clientAddress) + ':' + normalizeLogin(loginName);
+    }
+
+    private String normalizeAddress(String clientAddress) {
+        return clientAddress == null ? "unknown" : clientAddress;
+    }
+
+    private String normalizeLogin(String loginName) {
+        return loginName == null ? "" : loginName.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String maskAddress(String address) {
+        if (address == null || address.isBlank() || "unknown".equals(address)) return "unknown";
+        if (address.contains(".")) {
+            String[] parts = address.split("\\.");
+            return parts.length == 4 ? parts[0] + "." + parts[1] + ".***.***" : "masked";
+        }
+        return address.contains(":") ? address.substring(0, Math.min(4, address.length())) + ":***" : "masked";
     }
 
     private ApiException rateLimited() {
@@ -93,6 +127,8 @@ public class LoginAttemptService {
         );
     }
 
-    private record AttemptWindow(int failures, Instant expiresAt) {
-    }
+    private record AttemptWindow(int failures, Instant expiresAt, String clientAddress,
+                                 String loginName) {}
+    public record LoginLockSummary(String loginName, String clientAddress,
+                                   int failures, Instant expiresAt) {}
 }

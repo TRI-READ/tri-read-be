@@ -14,6 +14,8 @@ public class QuizGenerationProperties {
     private int inventoryDays = 3;
     private int maxJobsPerRun = 3;
     private int maxJobsPerDay = 3;
+    private int maxApiCallsPerDay = 6;
+    private boolean aiValidationEnabled;
     private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
     private String recoveryCron = "0 30 5 * * *";
@@ -35,6 +37,10 @@ public class QuizGenerationProperties {
     public void setMaxJobsPerRun(int maxJobsPerRun) { this.maxJobsPerRun = maxJobsPerRun; }
     public int getMaxJobsPerDay() { return maxJobsPerDay; }
     public void setMaxJobsPerDay(int maxJobsPerDay) { this.maxJobsPerDay = maxJobsPerDay; }
+    public int getMaxApiCallsPerDay() { return maxApiCallsPerDay; }
+    public void setMaxApiCallsPerDay(int maxApiCallsPerDay) { this.maxApiCallsPerDay = maxApiCallsPerDay; }
+    public boolean isAiValidationEnabled() { return aiValidationEnabled; }
+    public void setAiValidationEnabled(boolean aiValidationEnabled) { this.aiValidationEnabled = aiValidationEnabled; }
     public long getRetryDelayMs() { return retryDelayMs; }
     public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }

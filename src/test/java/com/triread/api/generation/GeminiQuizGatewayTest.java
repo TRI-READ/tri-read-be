@@ -64,7 +64,7 @@ class GeminiQuizGatewayTest {
         String input = gateway.generationInput(LocalDate.of(2026, 7, 16), List.of(
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 2,
-                        "Quantum computing and information processing", "Science")));
+                        "Quantum computing and information processing", "Science", "")));
 
         assertThat(input)
                 .contains("Changing only the title or angle still counts as reuse")

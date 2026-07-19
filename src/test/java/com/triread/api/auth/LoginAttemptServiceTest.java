@@ -1,5 +1,6 @@
 package com.triread.api.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -42,6 +43,23 @@ class LoginAttemptServiceTest {
 
         assertThatCode(() -> service.assertAllowed("203.0.113.1", "reader"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void administratorCanInspectAndClearLockedLogin() {
+        service.recordFailure("203.0.113.91", "Reader");
+        service.recordFailure("203.0.113.91", "Reader");
+        service.recordFailure("203.0.113.91", "Reader");
+
+        assertThat(service.getLockedAttempts()).singleElement().satisfies(attempt -> {
+            assertThat(attempt.loginName()).isEqualTo("reader");
+            assertThat(attempt.clientAddress()).isEqualTo("203.0.***.***");
+            assertThat(attempt.failures()).isEqualTo(3);
+        });
+
+        service.clearLogin("READER");
+
+        assertThat(service.getLockedAttempts()).isEmpty();
     }
 
     @Test

@@ -17,7 +17,7 @@ class QuizTopicDiversityValidatorTest {
         List<QuizGenerationData.RecentPassageRow> recent = List.of(
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 1,
-                        "Historical memory and modern narrative", "Humanities"));
+                        "Historical memory and modern narrative", "Humanities", ""));
 
         QuizValidation.Result result = validator.validate(quiz, recent);
 
@@ -33,7 +33,7 @@ class QuizTopicDiversityValidatorTest {
         List<QuizGenerationData.RecentPassageRow> recent = List.of(
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 1,
-                        "Historical memory and modern narrative", "Humanities"));
+                        "Historical memory and modern narrative", "Humanities", ""));
 
         assertThat(validator.validate(quiz, recent).passed()).isTrue();
     }
@@ -46,7 +46,7 @@ class QuizTopicDiversityValidatorTest {
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 1,
                         "How interference changes information processing",
-                        "Quantum computing and qubit interference"));
+                        "Quantum computing and qubit interference", ""));
 
         QuizValidation.Result result = validator.validate(quiz, recent);
 
@@ -62,7 +62,7 @@ class QuizTopicDiversityValidatorTest {
         List<QuizGenerationData.RecentPassageRow> recent = List.of(
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 1,
-                        "Historical memory and modern narrative", "Humanities"));
+                        "Historical memory and modern narrative", "Humanities", ""));
 
         assertThat(validator.validate(quiz, recent).passed()).isTrue();
     }
@@ -79,7 +79,7 @@ class QuizTopicDiversityValidatorTest {
             List<QuizGenerationData.RecentPassageRow> recent = List.of(
                     new QuizGenerationData.RecentPassageRow(
                             LocalDate.of(2026, 7, 15), 1,
-                            "\uC5B8\uC5B4\uC758 \uC0AC\uD68C\uC801 \uAD6C\uC131\uACFC \uC758\uBBF8\uC758 \uAC00\uBCC0\uC131", broadArea));
+                            "\uC5B8\uC5B4\uC758 \uC0AC\uD68C\uC801 \uAD6C\uC131\uACFC \uC758\uBBF8\uC758 \uAC00\uBCC0\uC131", broadArea, ""));
 
             assertThat(validator.validate(quiz, recent).passed())
                     .as("broad area label %s", broadArea)
@@ -94,9 +94,26 @@ class QuizTopicDiversityValidatorTest {
         List<QuizGenerationData.RecentPassageRow> recent = List.of(
                 new QuizGenerationData.RecentPassageRow(
                         LocalDate.of(2026, 7, 15), 1,
-                        "고분자 반도체와 유기 전자 소자의 발전", "재료공학"));
+                        "고분자 반도체와 유기 전자 소자의 발전", "재료공학", ""));
 
         assertThat(validator.validate(quiz, recent).passed()).isTrue();
+    }
+
+    @Test
+    void rejectsRewordedTitleWhenPassageBodyIsNearlyIdentical() {
+        AdminQuizService.CreateQuiz quiz = RuleBasedQuizValidatorTest.validQuiz();
+        AdminQuizService.CreatePassage first = quiz.passages().getFirst();
+        String recentContent = first.content() + " 문장 부호만 조금 달라졌습니다.";
+        List<QuizGenerationData.RecentPassageRow> recent = List.of(
+                new QuizGenerationData.RecentPassageRow(
+                        LocalDate.of(2026, 7, 15), 1,
+                        "전혀 다른 제목", "전혀 다른 세부 주제", recentContent));
+
+        QuizValidation.Result result = validator.validate(quiz, recent);
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.issues()).singleElement().satisfies(issue ->
+                assertThat(issue.code()).isEqualTo("RECENT_TOPIC_OVERLAP"));
     }
 
     private AdminQuizService.CreateQuiz quizWithFirstTitle(String title) {

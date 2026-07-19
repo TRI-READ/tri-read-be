@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private final QuizAiGateway aiGateway;
     private final PromptTemplateService promptTemplateService;
     private final QuizGenerationProperties properties;
+    private final AiApiUsageService apiUsageService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -35,6 +38,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                                      QuizAiGateway aiGateway,
                                      PromptTemplateService promptTemplateService,
                                      QuizGenerationProperties properties,
+                                     AiApiUsageService apiUsageService,
                                      ObjectMapper objectMapper,
                                      Clock clock) {
         this.mapper = mapper;
@@ -44,6 +48,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         this.aiGateway = aiGateway;
         this.promptTemplateService = promptTemplateService;
         this.properties = properties;
+        this.apiUsageService = apiUsageService;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -79,8 +84,9 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             Long persistedQuizId = null;
             try {
                 updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
-                AdminQuizService.CreateQuiz generated = aiGateway.generate(
-                        targetDate, List.copyOf(excludedPassages), prompts.generation());
+                AdminQuizService.CreateQuiz generated = callAi(logId, "GENERATION",
+                        aiGateway.generationModel(), () -> aiGateway.generate(
+                                targetDate, List.copyOf(excludedPassages), prompts.generation()));
                 latestRaw = serialize(generated);
                 updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
 
@@ -106,16 +112,20 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     continue;
                 }
 
-                QuizValidation.Result aiResult = aiGateway.validate(generated, prompts.validation());
-                saveValidation(logId, null, attempt, "AI", aiResult);
-                int finalScore = Math.min(Math.min(ruleResult.score(), diversityResult.score()),
-                        aiResult.score());
-                if (!passes(aiResult)) {
-                    latestError = summarize(aiResult);
-                    updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
-                            attempt, finalScore, latestRaw, latestError,
-                            attempt == maxAttempts ? clock.instant() : null);
-                    continue;
+                int finalScore = Math.min(ruleResult.score(), diversityResult.score());
+                if (properties.isAiValidationEnabled()) {
+                    QuizValidation.Result aiResult = callAi(logId, "VALIDATION",
+                            properties.getGemini().getValidationModel(),
+                            () -> aiGateway.validate(generated, prompts.validation()));
+                    saveValidation(logId, null, attempt, "AI", aiResult);
+                    finalScore = Math.min(finalScore, aiResult.score());
+                    if (!passes(aiResult)) {
+                        latestError = summarize(aiResult);
+                        updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
+                                attempt, finalScore, latestRaw, latestError,
+                                attempt == maxAttempts ? clock.instant() : null);
+                        continue;
+                    }
                 }
 
                 AdminQuizService.QuizDetail quiz = adminQuizService.createReviewedDraft(
@@ -136,11 +146,12 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                             null, latestRaw, latestError, clock.instant());
                     throw exception;
                 }
-                boolean configurationError = exception.getCode().endsWith("_API_KEY_MISSING");
-                boolean finalAttempt = attempt == maxAttempts || configurationError;
+                boolean terminalError = exception.getCode().endsWith("_API_KEY_MISSING")
+                        || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(exception.getCode());
+                boolean finalAttempt = attempt == maxAttempts || terminalError;
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
                         null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
-                if (configurationError) throw exception;
+                if (terminalError) throw exception;
                 if (!finalAttempt && isTransient(exception)) waitBeforeRetry(attempt);
             } catch (RuntimeException exception) {
                 latestError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
@@ -193,7 +204,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         for (int index = 0; index < quiz.passages().size(); index++) {
             AdminQuizService.CreatePassage passage = quiz.passages().get(index);
             passages.add(new QuizGenerationData.RecentPassageRow(
-                    quiz.challengeDate(), index + 1, passage.title(), passage.topic()));
+                    quiz.challengeDate(), index + 1, passage.title(), passage.topic(), passage.content()));
         }
         return passages;
     }
@@ -229,6 +240,21 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         }
     }
 
+    private <T> T callAi(long logId, String purpose, String model, Supplier<T> call) {
+        long apiCallId = apiUsageService.start(logId, aiGateway.provider(), model, purpose);
+        try {
+            T result = call.get();
+            apiUsageService.success(apiCallId);
+            return result;
+        } catch (ApiException exception) {
+            apiUsageService.failure(apiCallId, exception.getCode());
+            throw exception;
+        } catch (RuntimeException exception) {
+            apiUsageService.failure(apiCallId, exception.getClass().getSimpleName());
+            throw exception;
+        }
+    }
+
     private void saveValidation(long logId, Long quizSetId, int attempt, String type,
                                 QuizValidation.Result result) {
         mapper.insertValidationResult(new QuizGenerationData.ValidationResultInsert(
@@ -242,14 +268,29 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
     @Override
     @Transactional(readOnly = true)
-    public GenerationLogPage getLogs(int requestedPage, int requestedSize) {
+    public GenerationLogPage getLogs(int requestedPage, int requestedSize,
+                                     String requestedStatus, LocalDate targetDate) {
         int page = PageResponse.page(requestedPage);
         int size = PageResponse.size(requestedSize);
-        long total = mapper.countLogs();
-        List<QuizGenerationData.GenerationLogRow> logs = mapper.findLogs(page * size, size);
+        String status = normalizeStatus(requestedStatus);
+        long total = mapper.countLogs(status, targetDate);
+        List<QuizGenerationData.GenerationLogRow> logs = mapper.findLogs(status, targetDate,
+                page * size, size);
         QuizGenerationData.GenerationStats stats = mapper.getStats();
         return new GenerationLogPage(PageResponse.of(logs, page, size, total),
-                stats.successCount(), stats.failureCount());
+                stats.successCount(), stats.failureCount(), apiUsageService.todayUsage(),
+                properties.isAiValidationEnabled());
+    }
+
+    private String normalizeStatus(String requestedStatus) {
+        if (requestedStatus == null || requestedStatus.isBlank()) return null;
+        String status = requestedStatus.trim().toUpperCase();
+        if (!Set.of("GENERATING", "VALIDATING", "RETRYING", "READY", "PUBLISHED", "FAILED")
+                .contains(status)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "GENERATION_STATUS_INVALID",
+                    "The generation status filter is invalid.");
+        }
+        return status;
     }
 
     @Override

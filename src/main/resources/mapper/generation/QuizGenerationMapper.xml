@@ -43,12 +43,20 @@
     <select id="findLogs" resultType="com.triread.api.generation.QuizGenerationData$GenerationLogRow">
         SELECT <include refid="logColumns"/>
         FROM generation_logs
+        <where>
+            <if test="status != null and status != ''">status = #{status}</if>
+            <if test="targetDate != null">AND target_date = #{targetDate}</if>
+        </where>
         ORDER BY created_at DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countLogs" resultType="long">
         SELECT COUNT(*) FROM generation_logs
+        <where>
+            <if test="status != null and status != ''">status = #{status}</if>
+            <if test="targetDate != null">AND target_date = #{targetDate}</if>
+        </where>
     </select>
 
     <select id="countLogsCreatedBetween" resultType="long">
@@ -81,12 +89,36 @@
 
     <select id="findRecentPassages"
             resultType="com.triread.api.generation.QuizGenerationData$RecentPassageRow">
-        SELECT qs.challenge_date, p.position, p.title, p.topic
+        SELECT qs.challenge_date, p.position, p.title, p.topic, p.content
         FROM quiz_sets qs
         JOIN passages p ON p.quiz_set_id = qs.id
         WHERE qs.challenge_date BETWEEN #{sinceDate} AND #{targetDate}
           AND qs.status IN ('DRAFT', 'REVIEWED', 'PUBLISHED')
         ORDER BY qs.challenge_date DESC, qs.id DESC, p.position
         LIMIT 100
+    </select>
+
+    <insert id="insertApiCall" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO ai_api_calls (generation_log_id, provider, model, purpose, status)
+        VALUES (#{generationLogId}, #{provider}, #{model}, #{purpose}, 'STARTED')
+    </insert>
+
+    <update id="completeApiCall">
+        UPDATE ai_api_calls
+        SET status = #{status}, error_code = #{errorCode}, completed_at = #{completedAt}
+        WHERE id = #{apiCallId}
+    </update>
+
+    <select id="countApiCallsCreatedBetween" resultType="long">
+        SELECT COUNT(*) FROM ai_api_calls
+        WHERE created_at &gt;= #{from} AND created_at &lt; #{until}
+    </select>
+
+    <select id="getApiUsageStats" resultType="com.triread.api.generation.QuizGenerationData$ApiUsageStats">
+        SELECT COUNT(*) AS total_count,
+               COUNT(*) FILTER (WHERE status = 'SUCCESS') AS success_count,
+               COUNT(*) FILTER (WHERE status = 'FAILED') AS failure_count
+        FROM ai_api_calls
+        WHERE created_at &gt;= #{from} AND created_at &lt; #{until}
     </select>
 </mapper>

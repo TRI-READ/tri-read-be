@@ -1,6 +1,8 @@
 package com.triread.api.prompt;
 
 import com.triread.api.auth.AuthPrincipal;
+import com.triread.api.audit.AdminAuditService;
+import java.util.Map;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -19,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/prompts")
 public class AdminPromptController {
     private final PromptTemplateService service;
+    private final AdminAuditService auditService;
 
-    public AdminPromptController(PromptTemplateService service) {
+    public AdminPromptController(PromptTemplateService service, AdminAuditService auditService) {
         this.service = service;
+        this.auditService = auditService;
     }
 
     @GetMapping
@@ -39,8 +43,12 @@ public class AdminPromptController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CreatePromptRequest request
     ) {
-        return service.createVersion(principal.userId(), request.promptType(),
+        PromptTemplateService.PromptVersion created = service.createVersion(principal.userId(), request.promptType(),
                 request.content(), request.changeNote());
+        auditService.record(principal.userId(), "PROMPT_VERSION_CREATED", "PROMPT",
+                created.promptTemplateId(), Map.of("promptType", created.promptType(),
+                        "version", created.versionNumber()));
+        return created;
     }
 
     @PostMapping("/{promptTemplateId}/activate")
@@ -48,7 +56,11 @@ public class AdminPromptController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable long promptTemplateId
     ) {
-        return service.activate(principal.userId(), promptTemplateId);
+        PromptTemplateService.PromptVersion activated = service.activate(principal.userId(), promptTemplateId);
+        auditService.record(principal.userId(), "PROMPT_VERSION_ACTIVATED", "PROMPT",
+                promptTemplateId, Map.of("promptType", activated.promptType(),
+                        "version", activated.versionNumber()));
+        return activated;
     }
 
     public record CreatePromptRequest(

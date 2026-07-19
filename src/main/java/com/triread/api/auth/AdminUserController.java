@@ -4,6 +4,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import com.triread.api.common.PageResponse;
+import com.triread.api.audit.AdminAuditService;
+import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -17,9 +19,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
     private final AdminUserService service;
+    private final AdminAuditService auditService;
 
-    public AdminUserController(AdminUserService service) {
+    public AdminUserController(AdminUserService service, AdminAuditService auditService) {
         this.service = service;
+        this.auditService = auditService;
     }
 
     @GetMapping
@@ -36,7 +40,11 @@ public class AdminUserController {
             @PathVariable @Positive long userId,
             @Valid @RequestBody UpdateRoleRequest request
     ) {
-        return service.updateRole(principal.userId(), userId, request.role());
+        AdminUserService.UserSummary updated = service.updateRole(
+                principal.userId(), userId, request.role());
+        auditService.record(principal.userId(), "USER_ROLE_UPDATED", "USER", userId,
+                Map.of("role", updated.role()));
+        return updated;
     }
 
     public record UpdateRoleRequest(@NotBlank String role) {}

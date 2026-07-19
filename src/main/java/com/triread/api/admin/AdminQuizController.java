@@ -9,6 +9,10 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import com.triread.api.audit.AdminAuditService;
+import com.triread.api.auth.AuthPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/quizzes")
 public class AdminQuizController {
     private final AdminQuizService service;
-    public AdminQuizController(AdminQuizService service) { this.service = service; }
+    private final AdminAuditService auditService;
+    public AdminQuizController(AdminQuizService service, AdminAuditService auditService) {
+        this.service = service;
+        this.auditService = auditService;
+    }
 
     @GetMapping
     public AdminQuizService.QuizPage list(
@@ -35,15 +43,32 @@ public class AdminQuizController {
         return service.getQuizzes(page, size);
     }
     @GetMapping("/{quizSetId}") public AdminQuizService.QuizDetail detail(@Positive @PathVariable long quizSetId) { return service.getQuiz(quizSetId); }
-    @PostMapping public ResponseEntity<AdminQuizService.QuizDetail> create(@Valid @RequestBody CreateQuizRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.createDraft(toCommand(request)));
+    @PostMapping public ResponseEntity<AdminQuizService.QuizDetail> create(
+            @AuthenticationPrincipal AuthPrincipal principal, @Valid @RequestBody CreateQuizRequest request) {
+        AdminQuizService.QuizDetail created = service.createDraft(toCommand(request));
+        auditService.record(principal.userId(), "QUIZ_DRAFT_CREATED", "QUIZ_SET",
+                created.quiz().quizSetId(), Map.of("challengeDate", request.challengeDate().toString()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
-    @PutMapping("/{quizSetId}") public AdminQuizService.QuizDetail update(@Positive @PathVariable long quizSetId,
-            @Valid @RequestBody CreateQuizRequest request) { return service.updateDraft(quizSetId, toCommand(request)); }
-    @DeleteMapping("/{quizSetId}") public ResponseEntity<Void> delete(@Positive @PathVariable long quizSetId) {
-        service.deleteDraft(quizSetId); return ResponseEntity.noContent().build();
+    @PutMapping("/{quizSetId}") public AdminQuizService.QuizDetail update(
+            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId,
+            @Valid @RequestBody CreateQuizRequest request) {
+        AdminQuizService.QuizDetail updated = service.updateDraft(quizSetId, toCommand(request));
+        auditService.record(principal.userId(), "QUIZ_DRAFT_UPDATED", "QUIZ_SET", quizSetId, Map.of());
+        return updated;
     }
-    @PostMapping("/{quizSetId}/publish") public AdminQuizService.QuizDetail publish(@Positive @PathVariable long quizSetId) { return service.publish(quizSetId); }
+    @DeleteMapping("/{quizSetId}") public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId) {
+        service.deleteDraft(quizSetId);
+        auditService.record(principal.userId(), "QUIZ_DRAFT_DELETED", "QUIZ_SET", quizSetId, Map.of());
+        return ResponseEntity.noContent().build();
+    }
+    @PostMapping("/{quizSetId}/publish") public AdminQuizService.QuizDetail publish(
+            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId) {
+        AdminQuizService.QuizDetail published = service.publish(quizSetId);
+        auditService.record(principal.userId(), "QUIZ_PUBLISHED", "QUIZ_SET", quizSetId, Map.of());
+        return published;
+    }
 
     private AdminQuizService.CreateQuiz toCommand(CreateQuizRequest request) {
         return new AdminQuizService.CreateQuiz(request.challengeDate(), request.passages().stream().map(p ->

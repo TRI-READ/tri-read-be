@@ -8,7 +8,7 @@ import java.util.List;
 public interface QuizGenerationService {
     GenerationResult generate(LocalDate targetDate);
     GenerationResult retry(long generationLogId);
-    GenerationLogPage getLogs(int page, int size);
+    GenerationLogPage getLogs(int page, int size, String status, LocalDate targetDate);
     GenerationDetail getLog(long generationLogId);
 
     record GenerationResult(long generationLogId, String status, int attemptCount,
@@ -23,5 +23,7 @@ public interface QuizGenerationService {
                             List<ValidationResult> validations) {}
 
     record GenerationLogPage(PageResponse<QuizGenerationData.GenerationLogRow> page,
-                             long successCount, long failureCount) {}
+                             long successCount, long failureCount,
+                             AiApiUsageService.TodayUsage apiUsage,
+                             boolean aiValidationEnabled) {}
 }

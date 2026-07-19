@@ -1,0 +1,34 @@
+name: Production smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors --max-time 15 \
+            https://tri-read.duckdns.org/api/health)"
+          echo "$response" | grep -q '"status":"UP"'
+
+      - name: Check frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors --max-time 15 \
+            https://tri-read.duckdns.org/)"
+          echo "$response" | grep -q 'TRI:READ'
