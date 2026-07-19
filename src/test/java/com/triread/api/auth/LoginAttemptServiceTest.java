@@ -9,6 +9,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.convert.ApplicationConversionService;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.test.context.support.TestPropertySourceUtils;
 
 class LoginAttemptServiceTest {
 
@@ -39,5 +42,22 @@ class LoginAttemptServiceTest {
 
         assertThatCode(() -> service.assertAllowed("203.0.113.1", "reader"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void springContextCreatesServiceWithConfiguredConstructor() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().setConversionService(ApplicationConversionService.getSharedInstance());
+            TestPropertySourceUtils.addInlinedPropertiesToEnvironment(
+                    context,
+                    "app.auth.login-rate-limit.max-failures=5",
+                    "app.auth.login-rate-limit.window=15m"
+            );
+            context.register(LoginAttemptService.class);
+            context.refresh();
+
+            assertThatCode(() -> context.getBean(LoginAttemptService.class))
+                    .doesNotThrowAnyException();
+        }
     }
 }
