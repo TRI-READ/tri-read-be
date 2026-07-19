@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.triread.api.common.ApiException;
+import com.triread.api.prompt.PromptTemplateService;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,7 @@ class GeminiQuizGatewayTest {
 
     @Test
     void rejectsGenerationWhenApiKeyIsMissing() {
-        assertThatThrownBy(() -> gateway().generate(LocalDate.of(2026, 7, 13), List.of()))
+        assertThatThrownBy(() -> gateway().generate(LocalDate.of(2026, 7, 13), List.of(), prompt()))
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo("GEMINI_API_KEY_MISSING"));
     }
@@ -74,5 +75,9 @@ class GeminiQuizGatewayTest {
     private GeminiQuizGateway gateway() {
         QuizGenerationProperties properties = new QuizGenerationProperties();
         return new GeminiQuizGateway(properties, objectMapper);
+    }
+
+    private PromptTemplateService.PromptSnapshot prompt() {
+        return new PromptTemplateService.PromptSnapshot(1L, "GENERATION", 2, "instructions", "hash");
     }
 }

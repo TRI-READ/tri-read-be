@@ -2,6 +2,7 @@ package com.triread.api.generation;
 
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.prompt.PromptTemplateService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -17,27 +18,6 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class GeminiQuizGateway implements QuizAiGateway {
-    private static final String GENERATION_INSTRUCTIONS = """
-            You create original Korean non-fiction reading quizzes for Korean high-school seniors.
-            Produce exactly 3 passages in this order: (1) humanities/social science,
-            (2) science/technology, and (3) economics/law/interdisciplinary. Each passage must have
-            exactly 3 questions and each passage content must contain 1,200 to 1,800 Korean characters.
-            Each question must have
-            exactly 4 unique options. Use only information stated or logically derivable from
-            the passage. Ensure exactly one correct answer. Evidence must be an exact excerpt copied from
-            the passage as one contiguous substring: do not paraphrase, normalize spacing, add ellipses,
-            or change punctuation. Write original passages without copying or closely imitating published material.
-            Vary question types among comprehension, inference, application, and argument structure.
-            """;
-    private static final String VALIDATION_INSTRUCTIONS = """
-            You are an independent quality verifier for a Korean high-school senior reading quiz.
-            Verify every answer using only the supplied passage. Reject ambiguous questions, multiple
-            plausible answers, unsupported explanations, evidence that does not prove the answer,
-            internal factual or logical contradictions, and content below the requested difficulty.
-            Return a strict score from 0 to 100. passed may be true only when there are no ERROR issues
-            and the score is at least 90. Do not trust the provided answer key without checking it.
-            """;
-
     private final QuizGenerationProperties properties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -57,10 +37,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
     @Override
     public AdminQuizService.CreateQuiz generate(
             LocalDate targetDate,
-            List<QuizGenerationData.RecentPassageRow> recentPassages
+            List<QuizGenerationData.RecentPassageRow> recentPassages,
+            PromptTemplateService.PromptSnapshot prompt
     ) {
         String input = generationInput(targetDate, recentPassages);
-        JsonNode payload = call(generationModel(), GENERATION_INSTRUCTIONS, input,
+        JsonNode payload = call(generationModel(), prompt.content(), input,
                 generationSchema(), 20_000);
         try {
             GeneratedQuiz generated = objectMapper.treeToValue(payload, GeneratedQuiz.class);
@@ -101,10 +82,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     @Override
-    public QuizValidation.Result validate(AdminQuizService.CreateQuiz quiz) {
+    public QuizValidation.Result validate(AdminQuizService.CreateQuiz quiz,
+                                          PromptTemplateService.PromptSnapshot prompt) {
         try {
             String input = "Independently validate this quiz:\n" + objectMapper.writeValueAsString(quiz);
-            JsonNode payload = call(validationModel(), VALIDATION_INSTRUCTIONS, input,
+            JsonNode payload = call(validationModel(), prompt.content(), input,
                     validationSchema(), 8_000);
             return objectMapper.treeToValue(payload, QuizValidation.Result.class);
         } catch (JacksonException exception) {
@@ -198,7 +180,6 @@ public class GeminiQuizGateway implements QuizAiGateway {
     @Override public String provider() { return "GEMINI"; }
     @Override public String generationModel() { return properties.getGemini().getGenerationModel(); }
     @Override public String validationModel() { return properties.getGemini().getValidationModel(); }
-    @Override public String promptVersion() { return properties.getGemini().getPromptVersion(); }
 
     public record GeneratedQuiz(List<GeneratedPassage> passages) {}
     public record GeneratedPassage(String title, String topic, String content,

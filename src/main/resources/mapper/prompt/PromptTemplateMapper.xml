@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.prompt.PromptTemplateMapper">
+    <sql id="promptColumns">
+        pt.id AS prompt_template_id,
+        pt.prompt_type,
+        pt.version_number,
+        pt.content,
+        pt.content_hash,
+        pt.change_note,
+        pt.created_by_user_id,
+        COALESCE(creator.display_name, 'SYSTEM') AS created_by_name,
+        pt.created_at,
+        CASE
+            WHEN current_activation.prompt_template_id = pt.id THEN 'ACTIVE'
+            WHEN activation_summary.last_activated_at IS NOT NULL THEN 'ARCHIVED'
+            ELSE 'DRAFT'
+        END AS status,
+        activation_summary.last_activated_at
+    </sql>
+
+    <sql id="activationJoins">
+        LEFT JOIN app_users creator ON creator.id = pt.created_by_user_id
+        LEFT JOIN (
+            SELECT DISTINCT ON (active_template.prompt_type)
+                   active_template.prompt_type, pa.prompt_template_id
+            FROM prompt_activations pa
+            JOIN prompt_templates active_template ON active_template.id = pa.prompt_template_id
+            ORDER BY active_template.prompt_type, pa.id DESC
+        ) current_activation ON current_activation.prompt_type = pt.prompt_type
+        LEFT JOIN (
+            SELECT prompt_template_id, MAX(activated_at) AS last_activated_at
+            FROM prompt_activations
+            GROUP BY prompt_template_id
+        ) activation_summary ON activation_summary.prompt_template_id = pt.id
+    </sql>
+
+    <select id="findVersions" resultType="com.triread.api.prompt.PromptTemplateData$PromptRow">
+        SELECT <include refid="promptColumns"/>
+        FROM prompt_templates pt
+        <include refid="activationJoins"/>
+        WHERE pt.prompt_type = #{promptType}
+        ORDER BY pt.version_number DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countVersions" resultType="long">
+        SELECT COUNT(*) FROM prompt_templates WHERE prompt_type = #{promptType}
+    </select>
+
+    <select id="findVersion" resultType="com.triread.api.prompt.PromptTemplateData$PromptRow">
+        SELECT <include refid="promptColumns"/>
+        FROM prompt_templates pt
+        <include refid="activationJoins"/>
+        WHERE pt.id = #{promptTemplateId}
+    </select>
+
+    <select id="findActive" resultType="com.triread.api.prompt.PromptTemplateData$PromptRow">
+        SELECT <include refid="promptColumns"/>
+        FROM prompt_templates pt
+        <include refid="activationJoins"/>
+        WHERE pt.prompt_type = #{promptType}
+          AND current_activation.prompt_template_id = pt.id
+    </select>
+
+    <select id="nextVersion" resultType="int">
+        SELECT COALESCE(MAX(version_number), 0) + 1
+        FROM prompt_templates
+        WHERE prompt_type = #{promptType}
+    </select>
+
+    <select id="lockPromptType" resultType="string">
+        SELECT pg_advisory_xact_lock(hashtext(#{promptType}))::text
+    </select>
+
+    <insert id="insertTemplate" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO prompt_templates (
+            prompt_type, version_number, content, content_hash, change_note, created_by_user_id
+        ) VALUES (
+            #{promptType}, #{versionNumber}, #{content}, #{contentHash}, #{changeNote}, #{createdByUserId}
+        )
+    </insert>
+
+    <insert id="insertActivation">
+        INSERT INTO prompt_activations (prompt_template_id, activated_by_user_id)
+        VALUES (#{promptTemplateId}, #{activatedByUserId})
+    </insert>
+
+    <select id="findRecentActivations"
+            resultType="com.triread.api.prompt.PromptTemplateData$ActivationRow">
+        SELECT pa.id AS activation_id,
+               pa.prompt_template_id,
+               pt.version_number,
+               pa.activated_by_user_id,
+               COALESCE(actor.display_name, 'SYSTEM') AS activated_by_name,
+               pa.activated_at
+        FROM prompt_activations pa
+        JOIN prompt_templates pt ON pt.id = pa.prompt_template_id
+        LEFT JOIN app_users actor ON actor.id = pa.activated_by_user_id
+        WHERE pt.prompt_type = #{promptType}
+        ORDER BY pa.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

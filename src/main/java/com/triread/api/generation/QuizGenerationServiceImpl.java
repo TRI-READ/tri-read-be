@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
 import com.triread.api.common.PageResponse;
+import com.triread.api.prompt.PromptTemplateService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,6 +23,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private final RuleBasedQuizValidator ruleValidator;
     private final QuizTopicDiversityValidator topicDiversityValidator;
     private final QuizAiGateway aiGateway;
+    private final PromptTemplateService promptTemplateService;
     private final QuizGenerationProperties properties;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -31,6 +33,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                                      RuleBasedQuizValidator ruleValidator,
                                      QuizTopicDiversityValidator topicDiversityValidator,
                                      QuizAiGateway aiGateway,
+                                     PromptTemplateService promptTemplateService,
                                      QuizGenerationProperties properties,
                                      ObjectMapper objectMapper,
                                      Clock clock) {
@@ -39,6 +42,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         this.ruleValidator = ruleValidator;
         this.topicDiversityValidator = topicDiversityValidator;
         this.aiGateway = aiGateway;
+        this.promptTemplateService = promptTemplateService;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -59,8 +63,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     "The daily quiz generation budget has been exhausted.");
         }
 
+        PromptTemplateService.ActivePrompts prompts = promptTemplateService.getActivePrompts();
         QuizGenerationData.GenerationLogInsert log = new QuizGenerationData.GenerationLogInsert(
-                targetDate, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion(), "GENERATING");
+                targetDate, aiGateway.provider(), aiGateway.generationModel(), prompts.versionLabel(),
+                prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId(), "GENERATING");
         mapper.insertLog(log);
         long logId = log.getId();
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
@@ -74,7 +80,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             try {
                 updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
                 AdminQuizService.CreateQuiz generated = aiGateway.generate(
-                        targetDate, List.copyOf(excludedPassages));
+                        targetDate, List.copyOf(excludedPassages), prompts.generation());
                 latestRaw = serialize(generated);
                 updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
 
@@ -100,7 +106,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     continue;
                 }
 
-                QuizValidation.Result aiResult = aiGateway.validate(generated);
+                QuizValidation.Result aiResult = aiGateway.validate(generated, prompts.validation());
                 saveValidation(logId, null, attempt, "AI", aiResult);
                 int finalScore = Math.min(Math.min(ruleResult.score(), diversityResult.score()),
                         aiResult.score());
@@ -113,7 +119,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 }
 
                 AdminQuizService.QuizDetail quiz = adminQuizService.createReviewedDraft(
-                        generated, aiGateway.provider(), aiGateway.generationModel(), aiGateway.promptVersion());
+                        generated, aiGateway.provider(), aiGateway.generationModel(), prompts.versionLabel(),
+                        prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId());
                 long quizSetId = quiz.quiz().quizSetId();
                 persistedQuizId = quizSetId;
                 boolean autoPublished = properties.isAutoPublish();

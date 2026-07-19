@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.prompt.PromptTemplateService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,11 +34,18 @@ import tools.jackson.databind.ObjectMapper;
 @ExtendWith(MockitoExtension.class)
 class QuizGenerationServiceImplTest {
     private static final Instant NOW = Instant.parse("2026-07-13T00:00:00Z");
+    private static final PromptTemplateService.PromptSnapshot GENERATION_PROMPT =
+            new PromptTemplateService.PromptSnapshot(11L, "GENERATION", 2, "generate", "g-hash");
+    private static final PromptTemplateService.PromptSnapshot VALIDATION_PROMPT =
+            new PromptTemplateService.PromptSnapshot(12L, "VALIDATION", 3, "validate", "v-hash");
+    private static final PromptTemplateService.ActivePrompts ACTIVE_PROMPTS =
+            new PromptTemplateService.ActivePrompts(GENERATION_PROMPT, VALIDATION_PROMPT);
 
     @Mock QuizGenerationMapper mapper;
     @Mock AdminQuizService adminQuizService;
     @Mock RuleBasedQuizValidator ruleValidator;
     @Mock QuizAiGateway aiGateway;
+    @Mock PromptTemplateService promptTemplateService;
     private QuizGenerationProperties properties;
     private QuizGenerationServiceImpl service;
 
@@ -49,11 +57,11 @@ class QuizGenerationServiceImplTest {
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
-                new QuizTopicDiversityValidator(), aiGateway, properties,
+                new QuizTopicDiversityValidator(), aiGateway, promptTemplateService, properties,
                 new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
         lenient().when(aiGateway.provider()).thenReturn("GEMINI");
-        lenient().when(aiGateway.promptVersion()).thenReturn("v1");
+        lenient().when(promptTemplateService.getActivePrompts()).thenReturn(ACTIVE_PROMPTS);
         lenient().doAnswer(invocation -> {
             QuizGenerationData.GenerationLogInsert log = invocation.getArgument(0);
             log.setId(42L);
@@ -69,10 +77,11 @@ class QuizGenerationServiceImplTest {
         QuizValidation.Result aiResult = new QuizValidation.Result(true, 96, List.of());
         AdminQuizService.QuizDetail detail = detail(7L, date, "REVIEWED");
 
-        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(ruleResult);
-        when(aiGateway.validate(generated)).thenReturn(aiResult);
-        when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model", "v1"))
+        when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(aiResult);
+        when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model",
+                "g2/v3", 11L, 12L))
                 .thenReturn(detail);
 
         QuizGenerationService.GenerationResult result = service.generate(date);
@@ -93,16 +102,16 @@ class QuizGenerationServiceImplTest {
                 new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
-        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(failed, passed);
-        when(aiGateway.validate(generated)).thenReturn(passed);
-        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+        when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString(), anyLong(), anyLong()))
                 .thenReturn(detail(8L, date, "REVIEWED"));
 
         QuizGenerationService.GenerationResult result = service.generate(date);
 
         assertThat(result.attemptCount()).isEqualTo(2);
-        verify(aiGateway, times(2)).generate(eq(date), anyList());
+        verify(aiGateway, times(2)).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
         verify(mapper).updateLog(eq(42L), isNull(), eq("RETRYING"), eq(1), eq(70),
                 anyString(), anyString(), isNull(), eq(NOW));
     }
@@ -113,19 +122,19 @@ class QuizGenerationServiceImplTest {
         AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
-        when(aiGateway.generate(eq(date), anyList()))
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT)))
                 .thenThrow(new ApiException(org.springframework.http.HttpStatus.BAD_GATEWAY,
                         "GEMINI_UNAVAILABLE", "Temporarily unavailable"))
                 .thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(passed);
-        when(aiGateway.validate(generated)).thenReturn(passed);
-        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+        when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString(), anyLong(), anyLong()))
                 .thenReturn(detail(9L, date, "REVIEWED"));
 
         QuizGenerationService.GenerationResult result = service.generate(date);
 
         assertThat(result.attemptCount()).isEqualTo(2);
-        verify(aiGateway, times(2)).generate(eq(date), anyList());
+        verify(aiGateway, times(2)).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
     }
 
     @Test
@@ -152,7 +161,7 @@ class QuizGenerationServiceImplTest {
                         assertThat(exception.getCode())
                                 .isEqualTo("QUIZ_GENERATION_DAILY_LIMIT_REACHED"));
         verify(mapper, never()).insertLog(any());
-        verify(aiGateway, never()).generate(any(), anyList());
+        verify(aiGateway, never()).generate(any(), anyList(), any());
     }
 
     @Test
@@ -161,20 +170,20 @@ class QuizGenerationServiceImplTest {
         AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
         QuizValidation.Result failed = new QuizValidation.Result(false, 70, List.of(
                 new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
-        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(failed);
 
         assertThatThrownBy(() -> service.generate(date))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.getCode()).isEqualTo("QUIZ_GENERATION_FAILED"));
-        verify(aiGateway, times(2)).generate(eq(date), anyList());
-        verify(aiGateway, never()).validate(any());
+        verify(aiGateway, times(2)).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
+        verify(aiGateway, never()).validate(any(), any());
     }
 
     @Test
     void returnsGenerationLogWithStructuredValidationIssues() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
-                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
+                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "READY", 1, 95, null, NOW, NOW, NOW);
         when(mapper.findLog(42L)).thenReturn(log);
         when(mapper.findValidationResults(42L)).thenReturn(List.of(
@@ -196,7 +205,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void listsGenerationLogsWithGlobalStatsAndPagination() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
-                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
+                42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "READY", 1, 95, null, NOW, NOW, NOW);
         when(mapper.countLogs()).thenReturn(27L);
         when(mapper.findLogs(10, 10)).thenReturn(List.of(log));
@@ -222,15 +231,15 @@ class QuizGenerationServiceImplTest {
     void retriesFailedGenerationUsingOriginalTargetDate() {
         LocalDate date = LocalDate.of(2026, 7, 20);
         QuizGenerationData.GenerationLogRow failedLog = new QuizGenerationData.GenerationLogRow(
-                41L, null, date, "GEMINI", "generation-model", "v1",
+                41L, null, date, "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "FAILED", 3, null, "temporary failure", NOW, NOW, NOW);
         AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
         when(mapper.findLog(41L)).thenReturn(failedLog);
-        when(aiGateway.generate(eq(date), anyList())).thenReturn(generated);
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(passed);
-        when(aiGateway.validate(generated)).thenReturn(passed);
-        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString()))
+        when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(passed);
+        when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString(), anyLong(), anyLong()))
                 .thenReturn(detail(10L, date, "REVIEWED"));
 
         QuizGenerationService.GenerationResult result = service.retry(41L);
@@ -242,7 +251,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void rejectsRetryForSuccessfulGeneration() {
         QuizGenerationData.GenerationLogRow readyLog = new QuizGenerationData.GenerationLogRow(
-                41L, 10L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "v1",
+                41L, 10L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "READY", 1, 100, null, NOW, NOW, NOW);
         when(mapper.findLog(41L)).thenReturn(readyLog);
 
