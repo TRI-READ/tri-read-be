@@ -95,9 +95,34 @@ jobs:
         shell: bash
         run: gh pr merge "${{ steps.pr.outputs.number }}" --merge
 
-      - name: Run main branch CI
+      - name: Run main branch CI and wait for deployment
         if: steps.changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh workflow run ci.yml --ref main
+        run: |
+          git fetch origin main
+          MAIN_SHA="$(git rev-parse origin/main)"
+          gh workflow run ci.yml --ref main
+
+          for attempt in $(seq 1 30); do
+            RUN_ID="$(gh run list \
+              --workflow ci.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"$MAIN_SHA\") | .databaseId" \
+              | head -n 1)"
+
+            if [ -n "$RUN_ID" ]; then
+              gh run watch "$RUN_ID" --exit-status
+              exit 0
+            fi
+
+            echo "Waiting for main CI to start ($attempt/30)..."
+            sleep 10
+          done
+
+          echo "Main CI did not start within the timeout." >&2
+          exit 1

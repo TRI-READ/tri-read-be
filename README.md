@@ -161,13 +161,19 @@ Copy-Item .env.example .env
 docker compose up --build -d
 ```
 
-`dev` 브랜치에서 개발하고 CI를 통과한 변경을 PR로 `main`에 승격합니다. `main`은 백엔드 배포 기준 브랜치이며, 백엔드 배포는 프론트엔드 빌드나 정적 파일을 포함하지 않습니다. 프론트엔드는 별도 저장소의 `main`과 배포 워크플로에서 독립적으로 배포합니다.
+`dev` 브랜치에서 개발하고 CI를 통과한 변경을 PR로 `main`에 승격합니다. 승격 워크플로는 PR 병합 후 `main` CI를 실행하고, CI가 성공하면 같은 실행 안에서 재사용 배포 워크플로를 호출합니다. 승격 작업은 OCI 배포와 운영 스모크 테스트가 끝날 때까지 대기합니다.
+
+```text
+dev push -> PR CI -> main 병합 -> main CI -> OCI 백엔드 배포 -> 운영 스모크 테스트
+```
+
+`main`은 백엔드 배포 기준 브랜치이며, 백엔드 배포는 프론트엔드 빌드나 정적 파일을 포함하지 않습니다. 프론트엔드는 별도 저장소의 `main`과 배포 워크플로에서 독립적으로 배포합니다. 긴급 재배포만 `Deploy backend to OCI` 워크플로를 수동 실행합니다.
 
 배포가 끝나면 워크플로가 운영 홈페이지와 `/api/health`를 호출합니다. 두 응답 중 하나라도 비정상이면 배포 작업을 실패로 표시합니다.
 
 ## DB 백업과 복원
 
-`Backup production database` GitHub Actions 워크플로는 매일 한국 시간 오전 2시 30분에 PostgreSQL custom-format dump를 생성합니다. dump는 `BACKUP_ENCRYPTION_KEY`로 AES-256 암호화한 뒤 GitHub Actions artifact에 14일 동안 보관하며, 암호화 전 원본은 runner에서 즉시 삭제합니다.
+`Backup production database` GitHub Actions 워크플로는 매일 한국 시간 오전 2시 30분에 PostgreSQL custom-format dump를 생성합니다. dump는 `BACKUP_ENCRYPTION_KEY`로 AES-256 암호화합니다. 이어서 격리된 임시 PostgreSQL 18 컨테이너에 암호화 파일을 실제 복원하고 Flyway 이력 및 핵심 테이블을 검사합니다. 복원 검증에 성공한 백업만 GitHub Actions artifact에 14일 동안 보관하며, 평문 dump와 임시 DB는 runner에서 즉시 삭제합니다.
 
 필요한 GitHub Actions secret은 다음과 같습니다.
 
@@ -188,6 +194,24 @@ unset BACKUP_ENCRYPTION_KEY
 ```
 
 복원 완료 후 `https://tri-read.duckdns.org/api/health`와 로그인·퀴즈 조회를 확인합니다. 암호화 키를 잃으면 백업을 복원할 수 없으므로 GitHub secret과 별도로 안전한 암호 관리자에도 보관합니다.
+
+운영 DB를 변경하지 않고 내려받은 백업만 다시 검증하려면 다음 명령을 사용합니다. 검증용 PostgreSQL 컨테이너와 평문 dump는 명령 종료 시 자동 삭제됩니다.
+
+```bash
+export BACKUP_ENCRYPTION_KEY='백업에 사용한 값'
+./deploy/verify-backup.sh ./tri-read-YYYYMMDDTHHMMSSZ.dump.enc
+unset BACKUP_ENCRYPTION_KEY
+```
+
+## 운영 보안 체크리스트
+
+- OCI 방화벽과 VCN에는 80/443만 전체 공개하고, SSH 22는 가능한 한 관리자 IP로 제한합니다.
+- Spring Boot 8080과 PostgreSQL 5432는 외부에 공개하지 않고 Docker 내부 네트워크에서만 사용합니다.
+- `.env`, `application-secret.yml`, SSH 키, Gemini 키, DB dump는 Git에 커밋하지 않습니다.
+- GitHub Actions secret은 운영 배포와 백업에 필요한 최소 저장소에만 등록합니다.
+- 운영 배포 후 홈페이지와 `/api/health` 스모크 테스트를 통과해야 성공으로 봅니다.
+- 매일 암호화 백업의 임시 복원 검증 결과를 확인하고, 복구 키는 GitHub 밖의 암호 관리자에도 보관합니다.
+- 로컬 임시 빌드 디렉터리와 백업 파일은 `.gitignore`로 차단합니다.
 
 ## 저장소
 

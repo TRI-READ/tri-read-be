@@ -9,7 +9,10 @@ config/application-secret.yml
 # Gradle / Java
 .gradle/
 build/
+build-*/
+.locked-build-stale/
 out/
+tmp/
 
 # IDE
 .idea/
@@ -23,3 +26,8 @@ Thumbs.db
 # Deployment artifacts
 deploy/frontend/out/*
 !deploy/frontend/out/.gitkeep
+
+# Database backup artifacts
+backups/
+*.dump
+*.dump.enc
