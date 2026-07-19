@@ -3,9 +3,11 @@
 <mapper namespace="com.triread.api.generation.QuizGenerationMapper">
     <insert id="insertLog" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO generation_logs (
-            target_date, ai_provider, ai_model, prompt_version, status
+            target_date, ai_provider, ai_model, prompt_version,
+            generation_prompt_id, validation_prompt_id, status
         ) VALUES (
-            #{targetDate}, #{aiProvider}, #{aiModel}, #{promptVersion}, #{status}
+            #{targetDate}, #{aiProvider}, #{aiModel}, #{promptVersion},
+            #{generationPromptId}, #{validationPromptId}, #{status}
         )
     </insert>
 
@@ -33,7 +35,8 @@
 
     <sql id="logColumns">
         id AS generation_log_id, quiz_set_id, target_date, ai_provider, ai_model,
-        prompt_version, status, attempt_count, validation_score, error_message,
+        prompt_version, generation_prompt_id, validation_prompt_id,
+        status, attempt_count, validation_score, error_message,
         created_at, updated_at, completed_at
     </sql>
 

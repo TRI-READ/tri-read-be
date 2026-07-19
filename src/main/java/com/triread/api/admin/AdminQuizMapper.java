@@ -27,7 +27,9 @@ public interface AdminQuizMapper {
     int markReviewed(@Param("quizSetId") long quizSetId,
                      @Param("aiProvider") String aiProvider,
                      @Param("aiModel") String aiModel,
-                     @Param("promptVersion") String promptVersion);
+                     @Param("promptVersion") String promptVersion,
+                     @Param("generationPromptId") long generationPromptId,
+                     @Param("validationPromptId") long validationPromptId);
     int updateDraftDate(@Param("quizSetId") long quizSetId,
                         @Param("challengeDate") LocalDate challengeDate,
                         @Param("variantCode") String variantCode);

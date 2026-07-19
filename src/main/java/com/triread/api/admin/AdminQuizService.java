@@ -82,13 +82,15 @@ public class AdminQuizService {
 
     @Transactional
     public QuizDetail createReviewedDraft(CreateQuiz command, String aiProvider,
-                                          String aiModel, String promptVersion) {
+                                          String aiModel, String promptVersion,
+                                          long generationPromptId, long validationPromptId) {
         validate(command);
         AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
                 command.challengeDate(), nextVariantCode(command.challengeDate()));
         adminQuizMapper.insertQuiz(quiz);
         writeContent(quiz.getId(), command);
-        if (adminQuizMapper.markReviewed(quiz.getId(), aiProvider, aiModel, promptVersion) != 1) {
+        if (adminQuizMapper.markReviewed(quiz.getId(), aiProvider, aiModel, promptVersion,
+                generationPromptId, validationPromptId) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_REVIEWED",
                     "The generated quiz could not be marked as reviewed.");
         }

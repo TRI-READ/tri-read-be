@@ -12,14 +12,19 @@ public final class QuizGenerationData {
         private final String aiProvider;
         private final String aiModel;
         private final String promptVersion;
+        private final long generationPromptId;
+        private final long validationPromptId;
         private final String status;
 
         public GenerationLogInsert(LocalDate targetDate, String aiProvider, String aiModel,
-                                   String promptVersion, String status) {
+                                   String promptVersion, long generationPromptId,
+                                   long validationPromptId, String status) {
             this.targetDate = targetDate;
             this.aiProvider = aiProvider;
             this.aiModel = aiModel;
             this.promptVersion = promptVersion;
+            this.generationPromptId = generationPromptId;
+            this.validationPromptId = validationPromptId;
             this.status = status;
         }
         public Long getId() { return id; }
@@ -28,11 +33,14 @@ public final class QuizGenerationData {
         public String getAiProvider() { return aiProvider; }
         public String getAiModel() { return aiModel; }
         public String getPromptVersion() { return promptVersion; }
+        public long getGenerationPromptId() { return generationPromptId; }
+        public long getValidationPromptId() { return validationPromptId; }
         public String getStatus() { return status; }
     }
 
     public record GenerationLogRow(long generationLogId, Long quizSetId, LocalDate targetDate,
                                    String aiProvider, String aiModel, String promptVersion,
+                                   Long generationPromptId, Long validationPromptId,
                                    String status, int attemptCount, Integer validationScore,
                                    String errorMessage, Instant createdAt, Instant updatedAt,
                                    Instant completedAt) {}

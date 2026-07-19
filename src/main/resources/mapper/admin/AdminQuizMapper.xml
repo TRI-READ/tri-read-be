@@ -52,7 +52,8 @@
     <update id="markReviewed">
         UPDATE quiz_sets
         SET status = 'REVIEWED', ai_provider = #{aiProvider}, ai_model = #{aiModel},
-            prompt_version = #{promptVersion}
+            prompt_version = #{promptVersion}, generation_prompt_id = #{generationPromptId},
+            validation_prompt_id = #{validationPromptId}
         WHERE id = #{quizSetId} AND status = 'DRAFT'
     </update>
     <update id="updateDraftDate">
