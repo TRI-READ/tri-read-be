@@ -17,10 +17,11 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 class AuthControllerTest {
 
     private final AuthService authService = mock(AuthService.class);
+    private final LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
     private final HttpSessionSecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
     private final AuthController authController =
-            new AuthController(authService, securityContextRepository);
+            new AuthController(authService, loginAttemptService, securityContextRepository);
 
     @AfterEach
     void clearSecurityContext() {

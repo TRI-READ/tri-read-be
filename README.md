@@ -207,11 +207,18 @@ unset BACKUP_ENCRYPTION_KEY
 
 - OCI 방화벽과 VCN에는 80/443만 전체 공개하고, SSH 22는 가능한 한 관리자 IP로 제한합니다.
 - Spring Boot 8080과 PostgreSQL 5432는 외부에 공개하지 않고 Docker 내부 네트워크에서만 사용합니다.
+- 로그인 실패는 IP와 아이디 조합별로 기본 10회/10분 제한하며, 성공하면 실패 기록을 초기화합니다.
+- 운영 세션은 30분 동안 활동이 없으면 만료되고 Secure, HttpOnly, SameSite 쿠키로 전달합니다.
+- 애플리케이션 컨테이너는 비root 사용자, 읽기 전용 파일 시스템, 최소 Linux capability로 실행합니다.
+- Caddy는 HSTS, 클릭재킹 방지, MIME 스니핑 방지와 브라우저 권한 제한 헤더를 응답합니다.
 - `.env`, `application-secret.yml`, SSH 키, Gemini 키, DB dump는 Git에 커밋하지 않습니다.
 - GitHub Actions secret은 운영 배포와 백업에 필요한 최소 저장소에만 등록합니다.
 - 운영 배포 후 홈페이지와 `/api/health` 스모크 테스트를 통과해야 성공으로 봅니다.
 - 매일 암호화 백업의 임시 복원 검증 결과를 확인하고, 복구 키는 GitHub 밖의 암호 관리자에도 보관합니다.
 - 로컬 임시 빌드 디렉터리와 백업 파일은 `.gitignore`로 차단합니다.
+- Dependabot이 Gradle 의존성과 GitHub Actions 업데이트를 매주 확인합니다.
+- CodeQL `security-extended` 쿼리가 PR, `dev/main` 푸시, 주간 일정에서 Java 코드를 검사합니다.
+- OCI 배포는 `OCI_KNOWN_HOSTS` Secret에 고정한 SSH 호스트 키만 신뢰합니다.
 
 ## 저장소
 

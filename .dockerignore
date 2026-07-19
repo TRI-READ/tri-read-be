@@ -1,0 +1,16 @@
+.git
+.github
+.gradle
+.idea
+.vscode
+build
+build-*
+.locked-build-stale
+tmp
+backups
+*.dump
+*.dump.enc
+.env
+.env.*
+config/application-secret.yml
+src/main/resources/application-secret.yml

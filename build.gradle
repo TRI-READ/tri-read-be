@@ -8,6 +8,11 @@ group = 'com.triread'
 version = '0.1.0-SNAPSHOT'
 description = 'TRI:READ backend API'
 
+def isolatedBuildDirectory = System.getenv('TRI_READ_BUILD_DIR')
+if (isolatedBuildDirectory) {
+    layout.buildDirectory = file(isolatedBuildDirectory)
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)

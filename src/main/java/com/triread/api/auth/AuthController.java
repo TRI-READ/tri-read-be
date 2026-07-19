@@ -27,13 +27,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final LoginAttemptService loginAttemptService;
     private final SecurityContextRepository securityContextRepository;
 
     public AuthController(
             AuthService authService,
+            LoginAttemptService loginAttemptService,
             SecurityContextRepository securityContextRepository
     ) {
         this.authService = authService;
+        this.loginAttemptService = loginAttemptService;
         this.securityContextRepository = securityContextRepository;
     }
 
@@ -58,10 +61,18 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        AuthService.AuthenticatedUser user = authService.login(
-                loginRequest.loginName(),
-                loginRequest.pin()
-        );
+        String clientAddress = request.getRemoteAddr();
+        loginAttemptService.assertAllowed(clientAddress, loginRequest.loginName());
+        AuthService.AuthenticatedUser user;
+        try {
+            user = authService.login(loginRequest.loginName(), loginRequest.pin());
+        } catch (com.triread.api.common.ApiException exception) {
+            if ("INVALID_CREDENTIALS".equals(exception.getCode())) {
+                loginAttemptService.recordFailure(clientAddress, loginRequest.loginName());
+            }
+            throw exception;
+        }
+        loginAttemptService.recordSuccess(clientAddress, loginRequest.loginName());
         saveAuthentication(user, request, response);
         return AuthResponse.from(user);
     }

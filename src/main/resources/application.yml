@@ -16,7 +16,9 @@ server:
   forward-headers-strategy: framework
   servlet:
     session:
+      timeout: 30m
       cookie:
+        name: TRI_READ_SESSION
         http-only: true
         same-site: lax
 
@@ -35,6 +37,9 @@ app:
   time-zone: Asia/Seoul
   auth:
     bootstrap-admin-login-name: ${TRI_READ_ADMIN_LOGIN:}
+    login-rate-limit:
+      max-failures: ${LOGIN_RATE_LIMIT_MAX_FAILURES:10}
+      window: ${LOGIN_RATE_LIMIT_WINDOW:10m}
   quiz-generation:
     enabled: ${QUIZ_GENERATION_ENABLED:false}
     auto-publish: ${QUIZ_AUTO_PUBLISH:false}

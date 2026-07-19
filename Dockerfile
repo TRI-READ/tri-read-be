@@ -10,7 +10,9 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 ENV SPRING_PROFILES_ACTIVE=prod
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
+RUN groupadd --system --gid 10001 triread \
+    && useradd --system --uid 10001 --gid triread --no-create-home triread
+USER 10001:10001
 EXPOSE 8080
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-
