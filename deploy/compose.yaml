@@ -3,6 +3,8 @@ services:
     image: postgres:18-bookworm
     restart: unless-stopped
     mem_limit: 300m
+    security_opt:
+      - no-new-privileges:true
     command:
       - postgres
       - -c
@@ -30,6 +32,13 @@ services:
     image: tri-read-be:latest
     restart: unless-stopped
     mem_limit: 480m
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     expose:
       - "8080"
     env_file:

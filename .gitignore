@@ -8,6 +8,7 @@ config/application-secret.yml
 
 # Gradle / Java
 .gradle/
+.gradle-*/
 build/
 build-*/
 .locked-build-stale/

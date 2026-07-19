@@ -18,10 +18,11 @@ jobs:
       DEPLOY_SHA: ${{ github.sha }}
       OCI_HOST: ${{ secrets.OCI_HOST }}
       OCI_USER: ${{ secrets.OCI_USER }}
+      OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
 
     steps:
       - name: Checkout tested revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
@@ -39,10 +40,12 @@ jobs:
           test -n "$OCI_HOST"
           test -n "$OCI_USER"
           test -n "$OCI_SSH_PRIVATE_KEY"
+          test -n "$OCI_KNOWN_HOSTS"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci
           chmod 600 ~/.ssh/oci
-          ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Upload deployment files
         shell: bash
