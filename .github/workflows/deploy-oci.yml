@@ -65,6 +65,9 @@ jobs:
             test -f .env
             docker load --input tri-read-be.tar.gz
             docker compose --env-file .env -f compose.yaml up -d --no-build --remove-orphans
+            docker compose --env-file .env -f compose.yaml up -d --no-deps --force-recreate caddy
+            docker compose --env-file .env -f compose.yaml exec -T caddy \
+              caddy validate --config /etc/caddy/Caddyfile
             rm tri-read-be.tar.gz
             docker image prune -f
             docker compose --env-file .env -f compose.yaml ps

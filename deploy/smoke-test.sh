@@ -3,14 +3,24 @@ set -euo pipefail
 
 BASE_URL="${1:-https://tri-read.duckdns.org}"
 BASE_URL="${BASE_URL%/}"
+RETRY_COUNT="${SMOKE_RETRY_COUNT:-36}"
+RETRY_DELAY="${SMOKE_RETRY_DELAY:-5}"
+
+# The 1 GB OCI instance can take a little over a minute to start the JVM.
+CURL_RETRY_ARGS=(
+  --retry "$RETRY_COUNT"
+  --retry-delay "$RETRY_DELAY"
+  --retry-all-errors
+  --connect-timeout 10
+)
 
 curl --fail --silent --show-error \
-  --retry 12 --retry-delay 5 --retry-all-errors \
+  "${CURL_RETRY_ARGS[@]}" \
   "$BASE_URL/" \
   | grep -q '<title>TRI:READ</title>'
 
 HEALTH_RESPONSE="$(curl --fail --silent --show-error \
-  --retry 12 --retry-delay 5 --retry-all-errors \
+  "${CURL_RETRY_ARGS[@]}" \
   "$BASE_URL/api/health")"
 
 printf '%s' "$HEALTH_RESPONSE" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
