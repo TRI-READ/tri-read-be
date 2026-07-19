@@ -49,6 +49,8 @@ app:
     inventory-days: ${QUIZ_INVENTORY_DAYS:3}
     max-jobs-per-run: ${QUIZ_GENERATION_MAX_JOBS_PER_RUN:3}
     max-jobs-per-day: ${QUIZ_GENERATION_MAX_JOBS_PER_DAY:3}
+    max-api-calls-per-day: ${QUIZ_GENERATION_MAX_API_CALLS_PER_DAY:6}
+    ai-validation-enabled: ${QUIZ_AI_VALIDATION_ENABLED:false}
     retry-delay-ms: ${QUIZ_GENERATION_RETRY_DELAY_MS:10000}
     cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     recovery-cron: ${QUIZ_GENERATION_RECOVERY_CRON:0 30 5 * * *}

@@ -46,6 +46,7 @@ class QuizGenerationServiceImplTest {
     @Mock RuleBasedQuizValidator ruleValidator;
     @Mock QuizAiGateway aiGateway;
     @Mock PromptTemplateService promptTemplateService;
+    @Mock AiApiUsageService apiUsageService;
     private QuizGenerationProperties properties;
     private QuizGenerationServiceImpl service;
 
@@ -56,9 +57,10 @@ class QuizGenerationServiceImplTest {
         properties.setMaxJobsPerDay(3);
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
+        properties.setAiValidationEnabled(true);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 new QuizTopicDiversityValidator(), aiGateway, promptTemplateService, properties,
-                new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
+                apiUsageService, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
         lenient().when(aiGateway.provider()).thenReturn("GEMINI");
         lenient().when(promptTemplateService.getActivePrompts()).thenReturn(ACTIVE_PROMPTS);
@@ -67,6 +69,10 @@ class QuizGenerationServiceImplTest {
             log.setId(42L);
             return null;
         }).when(mapper).insertLog(any());
+        lenient().when(apiUsageService.start(anyLong(), anyString(), anyString(), anyString()))
+                .thenReturn(101L);
+        lenient().when(apiUsageService.todayUsage())
+                .thenReturn(new AiApiUsageService.TodayUsage(2, 2, 0, 6));
     }
 
     @Test
@@ -207,11 +213,11 @@ class QuizGenerationServiceImplTest {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
                 42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "READY", 1, 95, null, NOW, NOW, NOW);
-        when(mapper.countLogs()).thenReturn(27L);
-        when(mapper.findLogs(10, 10)).thenReturn(List.of(log));
+        when(mapper.countLogs(null, null)).thenReturn(27L);
+        when(mapper.findLogs(null, null, 10, 10)).thenReturn(List.of(log));
         when(mapper.getStats()).thenReturn(new QuizGenerationData.GenerationStats(18L, 9L));
 
-        QuizGenerationService.GenerationLogPage result = service.getLogs(1, 10);
+        QuizGenerationService.GenerationLogPage result = service.getLogs(1, 10, null, null);
 
         assertThat(result.page().items()).containsExactly(log);
         assertThat(result.page().page()).isEqualTo(1);

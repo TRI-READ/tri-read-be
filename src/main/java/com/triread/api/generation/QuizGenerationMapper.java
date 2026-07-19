@@ -19,9 +19,11 @@ public interface QuizGenerationMapper {
                    @Param("completedAt") Instant completedAt,
                    @Param("updatedAt") Instant updatedAt);
     void insertValidationResult(QuizGenerationData.ValidationResultInsert result);
-    List<QuizGenerationData.GenerationLogRow> findLogs(@Param("offset") int offset,
+    List<QuizGenerationData.GenerationLogRow> findLogs(@Param("status") String status,
+                                                        @Param("targetDate") LocalDate targetDate,
+                                                        @Param("offset") int offset,
                                                         @Param("limit") int limit);
-    long countLogs();
+    long countLogs(@Param("status") String status, @Param("targetDate") LocalDate targetDate);
     long countLogsCreatedBetween(@Param("from") Instant from,
                                  @Param("until") Instant until);
     QuizGenerationData.GenerationStats getStats();
@@ -31,4 +33,12 @@ public interface QuizGenerationMapper {
             @Param("targetDate") LocalDate targetDate,
             @Param("sinceDate") LocalDate sinceDate
     );
+    void insertApiCall(QuizGenerationData.ApiCallInsert call);
+    void completeApiCall(@Param("apiCallId") long apiCallId,
+                         @Param("status") String status,
+                         @Param("errorCode") String errorCode,
+                         @Param("completedAt") Instant completedAt);
+    long countApiCallsCreatedBetween(@Param("from") Instant from, @Param("until") Instant until);
+    QuizGenerationData.ApiUsageStats getApiUsageStats(@Param("from") Instant from,
+                                                       @Param("until") Instant until);
 }

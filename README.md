@@ -139,17 +139,23 @@ PATCH /api/admin/users/{userId}/role
 GET  /api/admin/prompts?type=GENERATION&page=0&size=8
 POST /api/admin/prompts
 POST /api/admin/prompts/{promptTemplateId}/activate
+
+GET    /api/admin/security/login-locks
+DELETE /api/admin/security/login-locks/{loginName}
+GET    /api/admin/audit-logs
 ```
 
-AI 생성 결과는 서버 규칙 검증, 최근 주제 중복 검사와 별도의 AI 검증을 모두 통과해야 `REVIEWED` 상태가 됩니다. 자동 발행은 기본적으로 꺼져 있어 관리자가 최종 내용을 확인할 수 있습니다. 실패 기록은 관리자 화면에서 원인을 확인하고 다시 생성할 수 있습니다.
+AI 생성 결과는 서버 규칙 검증과 최근 지문의 제목·주제·본문 유사도 검사를 통과해야 `REVIEWED` 상태가 됩니다. 별도의 Gemini 2차 검증은 호출 비용을 통제하기 위해 기본적으로 꺼져 있으며 `QUIZ_AI_VALIDATION_ENABLED=true`일 때만 추가로 실행합니다. 자동 발행은 기본적으로 꺼져 있어 관리자가 최종 내용을 확인할 수 있습니다. 실패 기록은 관리자 화면에서 원인을 확인하고 다시 생성할 수 있습니다.
 
 기본 생성 스케줄은 매일 새벽에 향후 평일 3일의 재고를 확인하고, 30분 뒤 한 차례 더 부족분을 복구합니다. 시간은 `QUIZ_GENERATION_CRON`, `QUIZ_GENERATION_RECOVERY_CRON`으로 조정합니다. 각 날짜는 최대 3세트를 보유하며 사용되지 않은 기존 발행 문제를 우선 재배정해 Gemini 호출을 줄입니다.
 
-호출량 보호를 위해 기본값은 스케줄 실행당 최대 3개 작업, 하루 최대 3개 작업, 작업당 최대 2회 시도입니다. 하루 한도는 서울 기준 자정에 초기화되며 실패한 생성도 작업 수에 포함됩니다. 중복 검사는 최근 DB 지문을 이용한 로컬 검사로 처리하고, AI 검증은 로컬 규칙과 중복 검사를 통과한 결과에만 수행합니다. `QUIZ_INVENTORY_DAYS`, `QUIZ_GENERATION_MAX_JOBS_PER_RUN`, `QUIZ_GENERATION_MAX_JOBS_PER_DAY`, `QUIZ_GENERATION_MAX_ATTEMPTS`로 값을 조정할 수 있습니다.
+호출량 보호를 위해 기본값은 스케줄 실행당 최대 3개 작업, 하루 최대 3개 작업, 작업당 최대 2회 시도, 실제 Gemini API 호출 하루 최대 6회입니다. 두 한도는 서울 기준 자정에 초기화되며 실패한 생성도 사용량에 포함됩니다. 중복 검사는 최근 DB 지문을 이용한 로컬 검사로 처리하고, 선택적으로 켠 AI 검증은 로컬 규칙과 중복 검사를 통과한 결과에만 수행합니다. `QUIZ_INVENTORY_DAYS`, `QUIZ_GENERATION_MAX_JOBS_PER_RUN`, `QUIZ_GENERATION_MAX_JOBS_PER_DAY`, `QUIZ_GENERATION_MAX_ATTEMPTS`, `QUIZ_GENERATION_MAX_API_CALLS_PER_DAY`로 값을 조정할 수 있습니다. 관리자 생성 운영 화면에서 오늘의 호출량과 한도를 확인할 수 있습니다.
 
 생성용과 검증용 프롬프트는 DB에서 독립된 불변 버전으로 관리합니다. 새 버전을 저장해도 즉시 적용되지 않으며 관리자가 활성화해야 다음 생성 작업부터 사용됩니다. 활성화 이력은 롤백 기록을 포함해 보존하고, 생성 작업은 시작할 때 활성 프롬프트 두 개를 한 번 읽어 같은 작업의 모든 재시도에 고정합니다. 생성 로그와 퀴즈 세트에는 실제 사용한 두 프롬프트 ID가 저장됩니다.
 
 관리자 권한 변경은 다음 로그인부터 새 세션에 반영됩니다. 현재 로그인한 관리자의 자기 강등과 마지막 관리자 강등은 서버에서 차단합니다.
+
+관리자 화면의 보안·감사 메뉴에서는 로그인 실패 제한으로 잠긴 아이디를 확인하고 해제할 수 있습니다. 퀴즈 생성·재시도·편집·발행·삭제, 프롬프트 저장·활성화, 사용자 권한 변경과 로그인 잠금 해제는 관리자 작업 이력에 남습니다.
 
 ## 배포
 
@@ -214,6 +220,7 @@ unset BACKUP_ENCRYPTION_KEY
 - `.env`, `application-secret.yml`, SSH 키, Gemini 키, DB dump는 Git에 커밋하지 않습니다.
 - GitHub Actions secret은 운영 배포와 백업에 필요한 최소 저장소에만 등록합니다.
 - 운영 배포 후 홈페이지와 `/api/health` 스모크 테스트를 통과해야 성공으로 봅니다.
+- 배포와 별개로 `Production smoke` 워크플로가 6시간마다 홈페이지와 `/api/health`를 확인합니다.
 - 매일 암호화 백업의 임시 복원 검증 결과를 확인하고, 복구 키는 GitHub 밖의 암호 관리자에도 보관합니다.
 - 로컬 임시 빌드 디렉터리와 백업 파일은 `.gitignore`로 차단합니다.
 - Dependabot이 Gradle 의존성과 GitHub Actions 업데이트를 매주 확인합니다.
