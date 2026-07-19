@@ -1,17 +1,11 @@
 name: Deploy backend to OCI
 
 on:
-  workflow_run:
-    workflows:
-      - Backend CI
-    branches:
-      - main
-    types:
-      - completed
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-oci-dev
+  group: deploy-backend-oci-main
   cancel-in-progress: true
 
 permissions:
@@ -19,10 +13,9 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_SHA: ${{ github.sha }}
       OCI_HOST: ${{ secrets.OCI_HOST }}
       OCI_USER: ${{ secrets.OCI_USER }}
 

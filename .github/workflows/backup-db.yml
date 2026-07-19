@@ -61,6 +61,10 @@ jobs:
           test -s "/tmp/${{ steps.dump.outputs.name }}.enc"
           shred -u "/tmp/${{ steps.dump.outputs.name }}"
 
+      - name: Verify encrypted backup with isolated restore
+        shell: bash
+        run: bash deploy/verify-backup.sh "/tmp/${{ steps.dump.outputs.name }}.enc"
+
       - name: Upload encrypted backup
         uses: actions/upload-artifact@v4
         with:
