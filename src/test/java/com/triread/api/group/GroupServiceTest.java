@@ -52,6 +52,7 @@ class GroupServiceTest {
             return 1;
         }).when(groupMapper).insertGroup(any(GroupData.GroupInsert.class));
         givenGeneratedInviteCode();
+        givenCreatedInvite(91L, 7, 20);
         GroupData.GroupRow groupRow = ownerGroupRow();
         when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(groupRow);
         when(groupMapper.findMembers(GROUP_ID)).thenReturn(List.of(ownerMemberRow()));
@@ -68,7 +69,8 @@ class GroupServiceTest {
         assertThat(groupCaptor.getValue().getName()).isEqualTo("Morning Readers");
         assertThat(groupCaptor.getValue().getDescription()).isEqualTo("Read together");
         verify(groupMapper).insertMember(GROUP_ID, OWNER_ID, "OWNER");
-        verify(groupMapper).insertInvite(GROUP_ID, "invite-hash", OWNER_ID);
+        verify(groupMapper).insertInvite(GROUP_ID, "invite-hash", OWNER_ID,
+                NOW.plus(7, java.time.temporal.ChronoUnit.DAYS), 20);
         assertThat(result.inviteCode()).isEqualTo("ABCDE-FGHIJ");
         assertThat(result.group().role()).isEqualTo("OWNER");
         assertThat(result.group().members()).hasSize(1);
@@ -148,14 +150,19 @@ class GroupServiceTest {
     void renewInviteRotatesCodesForOwner() {
         when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
         givenGeneratedInviteCode();
+        givenCreatedInvite(92L, 10, 5);
 
         GroupService.InviteCodeResponse result = groupService.renewInvite(
                 GROUP_ID,
-                OWNER_ID
+                OWNER_ID,
+                10,
+                5,
+                true
         );
 
         verify(groupMapper).disableGroupInvites(GROUP_ID);
-        verify(groupMapper).insertInvite(GROUP_ID, "invite-hash", OWNER_ID);
+        verify(groupMapper).insertInvite(GROUP_ID, "invite-hash", OWNER_ID,
+                NOW.plus(10, java.time.temporal.ChronoUnit.DAYS), 5);
         assertThat(result.inviteCode()).isEqualTo("ABCDE-FGHIJ");
     }
 
@@ -163,13 +170,76 @@ class GroupServiceTest {
     void renewInviteRejectsRegularMember() {
         when(groupMapper.findGroupForMember(GROUP_ID, MEMBER_ID)).thenReturn(memberGroupRow());
 
-        assertThatThrownBy(() -> groupService.renewInvite(GROUP_ID, MEMBER_ID))
+        assertThatThrownBy(() -> groupService.renewInvite(
+                GROUP_ID, MEMBER_ID, 7, 20, true))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
                     assertThat(exception.getCode()).isEqualTo("GROUP_OWNER_REQUIRED");
                 });
 
         verify(groupMapper, never()).disableGroupInvites(GROUP_ID);
+    }
+
+    @Test
+    void ownerCanListAndRevokeInvites() {
+        when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
+        givenCreatedInvite(91L, 7, 20);
+        when(groupMapper.disableInvite(GROUP_ID, 91L)).thenReturn(1);
+
+        assertThat(groupService.getInvites(GROUP_ID, OWNER_ID))
+                .singleElement()
+                .satisfies(invite -> {
+                    assertThat(invite.inviteId()).isEqualTo(91L);
+                    assertThat(invite.maxUses()).isEqualTo(20);
+                });
+        groupService.revokeInvite(GROUP_ID, 91L, OWNER_ID);
+
+        verify(groupMapper).disableInvite(GROUP_ID, 91L);
+    }
+
+    @Test
+    void ownerCanRemoveRegularMember() {
+        when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
+        when(groupMapper.findMember(GROUP_ID, MEMBER_ID)).thenReturn(
+                new GroupData.MemberRow(MEMBER_ID, "Member", "MEMBER", NOW));
+        when(groupMapper.deleteMember(GROUP_ID, MEMBER_ID)).thenReturn(1);
+
+        groupService.removeMember(GROUP_ID, MEMBER_ID, OWNER_ID);
+
+        verify(groupMapper).deleteMember(GROUP_ID, MEMBER_ID);
+    }
+
+    @Test
+    void ownerCannotRemoveThemselves() {
+        when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID)).thenReturn(ownerGroupRow());
+
+        assertThatThrownBy(() -> groupService.removeMember(GROUP_ID, OWNER_ID, OWNER_ID))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("OWNER_CANNOT_BE_REMOVED"));
+        verify(groupMapper, never()).deleteMember(GROUP_ID, OWNER_ID);
+    }
+
+    @Test
+    void ownerCanTransferOwnershipToMember() {
+        GroupData.GroupRow transferredGroup = new GroupData.GroupRow(
+                GROUP_ID, "Morning Readers", "Read together", "MEMBER", 2, NOW);
+        when(groupMapper.findGroupForMember(GROUP_ID, OWNER_ID))
+                .thenReturn(ownerGroupRow(), transferredGroup);
+        when(groupMapper.findMember(GROUP_ID, MEMBER_ID)).thenReturn(
+                new GroupData.MemberRow(MEMBER_ID, "Member", "MEMBER", NOW));
+        when(groupMapper.updateMemberRole(GROUP_ID, OWNER_ID, "MEMBER")).thenReturn(1);
+        when(groupMapper.updateMemberRole(GROUP_ID, MEMBER_ID, "OWNER")).thenReturn(1);
+        when(groupMapper.findMembers(GROUP_ID)).thenReturn(List.of(
+                new GroupData.MemberRow(OWNER_ID, "Owner", "MEMBER", NOW),
+                new GroupData.MemberRow(MEMBER_ID, "Member", "OWNER", NOW)
+        ));
+
+        GroupService.GroupDetail result = groupService.transferOwnership(
+                GROUP_ID, MEMBER_ID, OWNER_ID);
+
+        assertThat(result.role()).isEqualTo("MEMBER");
+        verify(groupMapper).updateMemberRole(GROUP_ID, OWNER_ID, "MEMBER");
+        verify(groupMapper).updateMemberRole(GROUP_ID, MEMBER_ID, "OWNER");
     }
 
     @Test
@@ -203,6 +273,14 @@ class GroupServiceTest {
     private void givenSubmittedInviteCode() {
         when(inviteCodeService.normalize(any(String.class))).thenReturn("ABCDEFGHIJ");
         when(inviteCodeService.hash("ABCDEFGHIJ")).thenReturn("invite-hash");
+    }
+
+    private void givenCreatedInvite(long inviteId, int expiresInDays, int maxUses) {
+        when(groupMapper.findInvites(GROUP_ID)).thenReturn(List.of(
+                new GroupData.InviteManagementRow(inviteId, true,
+                        NOW.plus(expiresInDays, java.time.temporal.ChronoUnit.DAYS),
+                        maxUses, 0, NOW)
+        ));
     }
 
     private GroupData.GroupRow ownerGroupRow() {

@@ -16,7 +16,9 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,15 +31,18 @@ public class AuthController {
     private final AuthService authService;
     private final LoginAttemptService loginAttemptService;
     private final SecurityContextRepository securityContextRepository;
+    private final SessionRegistry sessionRegistry;
 
     public AuthController(
             AuthService authService,
             LoginAttemptService loginAttemptService,
-            SecurityContextRepository securityContextRepository
+            SecurityContextRepository securityContextRepository,
+            SessionRegistry sessionRegistry
     ) {
         this.authService = authService;
         this.loginAttemptService = loginAttemptService;
         this.securityContextRepository = securityContextRepository;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @PostMapping("/signup")
@@ -82,6 +87,22 @@ public class AuthController {
         return AuthResponse.from(principal);
     }
 
+    @PatchMapping("/pin")
+    public ResponseEntity<Void> changePin(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody ChangePinRequest changePinRequest,
+            HttpServletRequest request
+    ) {
+        authService.changePin(principal.userId(), changePinRequest.currentPin(), changePinRequest.newPin());
+        sessionRegistry.getAllSessions(principal, false).forEach(session -> session.expireNow());
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        SecurityContextHolder.clearContext();
+        return ResponseEntity.noContent().build();
+    }
+
     private void saveAuthentication(
             AuthService.AuthenticatedUser user,
             HttpServletRequest request,
@@ -104,6 +125,10 @@ public class AuthController {
         securityContext.setAuthentication(authentication);
         SecurityContextHolder.setContext(securityContext);
         securityContextRepository.saveContext(securityContext, request, response);
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            sessionRegistry.registerNewSession(session.getId(), principal);
+        }
     }
 
     public record SignupRequest(
@@ -133,6 +158,17 @@ public class AuthController {
             @NotBlank
             @Pattern(regexp = "\\d{4,12}", message = "PIN must contain 4 to 12 digits.")
             String pin
+    ) {
+    }
+
+    public record ChangePinRequest(
+            @NotBlank
+            @Pattern(regexp = "\\d{4,12}", message = "PIN must contain 4 to 12 digits.")
+            String currentPin,
+
+            @NotBlank
+            @Pattern(regexp = "\\d{4,12}", message = "PIN must contain 4 to 12 digits.")
+            String newPin
     ) {
     }
 

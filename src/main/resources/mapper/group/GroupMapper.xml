@@ -38,12 +38,16 @@
         INSERT INTO group_invites (
             group_id,
             code_hash,
-            created_by_user_id
+            created_by_user_id,
+            expires_at,
+            max_uses
         )
         VALUES (
             #{groupId},
             #{codeHash},
-            #{createdByUserId}
+            #{createdByUserId},
+            #{expiresAt},
+            #{maxUses}
         )
     </insert>
 
@@ -91,6 +95,29 @@
         ORDER BY CASE gm.role WHEN 'OWNER' THEN 0 ELSE 1 END,
                  gm.joined_at,
                  u.id
+    </select>
+
+    <select id="findMember" resultType="com.triread.api.group.GroupData$MemberRow">
+        SELECT u.id AS user_id,
+               u.display_name,
+               gm.role,
+               gm.joined_at
+        FROM group_members gm
+        JOIN app_users u ON u.id = gm.user_id
+        WHERE gm.group_id = #{groupId}
+          AND gm.user_id = #{userId}
+    </select>
+
+    <select id="findInvites" resultType="com.triread.api.group.GroupData$InviteManagementRow">
+        SELECT id AS invite_id,
+               enabled,
+               expires_at,
+               max_uses,
+               used_count,
+               created_at
+        FROM group_invites
+        WHERE group_id = #{groupId}
+        ORDER BY created_at DESC, id DESC
     </select>
 
     <select id="findWeeklyActivity" resultType="com.triread.api.group.GroupData$ActivityRow">
@@ -199,6 +226,14 @@
           AND enabled = TRUE
     </update>
 
+    <update id="disableInvite">
+        UPDATE group_invites
+        SET enabled = FALSE
+        WHERE group_id = #{groupId}
+          AND id = #{inviteId}
+          AND enabled = TRUE
+    </update>
+
     <update id="consumeInvite">
         UPDATE group_invites
         SET used_count = used_count + 1,
@@ -208,6 +243,20 @@
             END
         WHERE id = #{inviteId}
           AND enabled = TRUE
+    </update>
+
+    <delete id="deleteMember">
+        DELETE FROM group_members
+        WHERE group_id = #{groupId}
+          AND user_id = #{userId}
+          AND role = 'MEMBER'
+    </delete>
+
+    <update id="updateMemberRole">
+        UPDATE group_members
+        SET role = #{role}
+        WHERE group_id = #{groupId}
+          AND user_id = #{userId}
     </update>
 
 </mapper>
