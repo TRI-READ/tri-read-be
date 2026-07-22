@@ -1,11 +1,13 @@
 package com.triread.api.generation;
 
-import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
 import com.triread.api.prompt.PromptTemplateService;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -35,7 +37,7 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     @Override
-    public AdminQuizService.CreateQuiz generate(
+    public QuizGenerationData.GeneratedQuiz generate(
             LocalDate targetDate,
             List<QuizGenerationData.RecentPassageRow> recentPassages,
             PromptTemplateService.PromptSnapshot prompt
@@ -44,15 +46,35 @@ public class GeminiQuizGateway implements QuizAiGateway {
         JsonNode payload = call(generationModel(), prompt.content(), input,
                 generationSchema(), 20_000);
         try {
-            GeneratedQuiz generated = objectMapper.treeToValue(payload, GeneratedQuiz.class);
-            return new AdminQuizService.CreateQuiz(targetDate, generated.passages().stream().map(passage ->
-                    new AdminQuizService.CreatePassage(passage.title(), passage.topic(), passage.content(),
-                            passage.questions().stream().map(question -> new AdminQuizService.CreateQuestion(
-                                    question.content(), question.options(), question.correctOptionPosition(),
-                                    question.explanation(), question.evidence())).toList())).toList());
+            GeneratedQuizPayload generated = objectMapper.treeToValue(payload, GeneratedQuizPayload.class);
+            return new QuizGenerationData.GeneratedQuiz(targetDate, generated.passages());
         } catch (JacksonException exception) {
             throw gatewayError("GEMINI_GENERATION_RESPONSE_INVALID",
                     "Generated quiz JSON could not be parsed.", exception);
+        }
+    }
+
+    @Override
+    public QuizGenerationData.GeneratedQuiz repair(
+            QuizGenerationData.GeneratedQuiz quiz,
+            List<QuizValidation.Issue> issues,
+            PromptTemplateService.PromptSnapshot prompt
+    ) {
+        Set<Integer> positions = repairPositions(issues);
+        try {
+            String input = "Repair only the requested passages in this generated quiz.\n"
+                    + "Requested passage positions: " + positions + "\n"
+                    + "Validation issues: " + objectMapper.writeValueAsString(issues) + "\n"
+                    + "Existing generated quiz: " + objectMapper.writeValueAsString(quiz) + "\n"
+                    + "Return exactly one repair for every requested position. Do not return or rewrite "
+                    + "unrequested passages. The replacement passage must satisfy the full generation prompt.";
+            JsonNode payload = call(generationModel(), prompt.content(), input,
+                    repairSchema(), Math.max(8_000, positions.size() * 6_000));
+            RepairPayload repair = objectMapper.treeToValue(payload, RepairPayload.class);
+            return mergeRepairs(quiz, positions, repair.repairs());
+        } catch (JacksonException exception) {
+            throw gatewayError("GEMINI_REPAIR_RESPONSE_INVALID",
+                    "Repaired quiz JSON could not be parsed.", exception);
         }
     }
 
@@ -82,7 +104,7 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     @Override
-    public QuizValidation.Result validate(AdminQuizService.CreateQuiz quiz,
+    public QuizValidation.Result validate(QuizGenerationData.GeneratedQuiz quiz,
                                           PromptTemplateService.PromptSnapshot prompt) {
         try {
             String input = "Independently validate this quiz:\n" + objectMapper.writeValueAsString(quiz);
@@ -93,6 +115,43 @@ public class GeminiQuizGateway implements QuizAiGateway {
             throw gatewayError("GEMINI_VALIDATION_RESPONSE_INVALID",
                     "Validation JSON could not be parsed.", exception);
         }
+    }
+
+    Set<Integer> repairPositions(List<QuizValidation.Issue> issues) {
+        Set<Integer> positions = new TreeSet<>();
+        if (issues != null) {
+            issues.stream()
+                    .map(QuizValidation.Issue::passagePosition)
+                    .filter(position -> position != null && position >= 1 && position <= 3)
+                    .forEach(positions::add);
+        }
+        return positions.isEmpty() ? Set.of(1, 2, 3) : positions;
+    }
+
+    QuizGenerationData.GeneratedQuiz mergeRepairs(
+            QuizGenerationData.GeneratedQuiz quiz,
+            Set<Integer> requestedPositions,
+            List<PassageRepair> repairs
+    ) {
+        if (quiz == null || quiz.passages().size() != 3 || repairs == null) {
+            throw gatewayError("GEMINI_REPAIR_RESPONSE_INVALID",
+                    "Repair response does not match the existing quiz.", null);
+        }
+        Set<Integer> returnedPositions = new TreeSet<>();
+        for (PassageRepair repair : repairs) {
+            if (repair == null || repair.passagePosition() < 1 || repair.passagePosition() > 3
+                    || repair.passage() == null || !returnedPositions.add(repair.passagePosition())) {
+                throw gatewayError("GEMINI_REPAIR_RESPONSE_INVALID",
+                        "Repair response contains an invalid or duplicate passage position.", null);
+            }
+        }
+        if (!returnedPositions.equals(new TreeSet<>(requestedPositions))) {
+            throw gatewayError("GEMINI_REPAIR_RESPONSE_INVALID",
+                    "Repair response did not contain exactly the requested passages.", null);
+        }
+        List<QuizGenerationData.GeneratedPassage> merged = new ArrayList<>(quiz.passages());
+        repairs.forEach(repair -> merged.set(repair.passagePosition() - 1, repair.passage()));
+        return new QuizGenerationData.GeneratedQuiz(quiz.challengeDate(), merged);
     }
 
     private JsonNode call(String model, String instructions, String input,
@@ -159,7 +218,75 @@ public class GeminiQuizGateway implements QuizAiGateway {
 
     private JsonNode generationSchema() {
         return readSchema("""
-                {"type":"object","additionalProperties":false,"required":["passages"],"properties":{"passages":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["title","topic","content","questions"],"properties":{"title":{"type":"string"},"topic":{"type":"string"},"content":{"type":"string"},"questions":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["content","options","correctOptionPosition","explanation","evidence"],"properties":{"content":{"type":"string"},"options":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"string"}},"correctOptionPosition":{"type":"integer","minimum":1,"maximum":4},"explanation":{"type":"string"},"evidence":{"type":"string"}}}}}}}}}
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["passages"],
+                  "properties": {
+                    "passages": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["title", "topic", "content", "questions"],
+                        "properties": {
+                          "title": {"type": "string"},
+                          "topic": {"type": "string"},
+                          "content": {"type": "string"},
+                          "questions": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 3,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": [
+                                "content", "options", "correctOptionPosition", "explanation",
+                                "evidence", "questionType", "optionRationales"
+                              ],
+                              "properties": {
+                                "content": {"type": "string"},
+                                "options": {
+                                  "type": "array",
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "items": {"type": "string"}
+                                },
+                                "correctOptionPosition": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 4
+                                },
+                                "explanation": {"type": "string"},
+                                "evidence": {"type": "string"},
+                                "questionType": {
+                                  "type": "string",
+                                  "enum": [
+                                    "COMPREHENSION", "INFERENCE", "APPLICATION", "ARGUMENT_STRUCTURE"
+                                  ]
+                                },
+                                "optionRationales": {
+                                  "type": "array",
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "items": {"type": "string"}
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                """);
+    }
+
+    private JsonNode repairSchema() {
+        return readSchema("""
+                {"type":"object","additionalProperties":false,"required":["repairs"],"properties":{"repairs":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["passagePosition","passage"],"properties":{"passagePosition":{"type":"integer","minimum":1,"maximum":3},"passage":{"type":"object","additionalProperties":false,"required":["title","topic","content","questions"],"properties":{"title":{"type":"string"},"topic":{"type":"string"},"content":{"type":"string"},"questions":{"type":"array","minItems":3,"maxItems":3,"items":{"type":"object","additionalProperties":false,"required":["content","options","correctOptionPosition","explanation","evidence","questionType","optionRationales"],"properties":{"content":{"type":"string"},"options":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"string"}},"correctOptionPosition":{"type":"integer","minimum":1,"maximum":4},"explanation":{"type":"string"},"evidence":{"type":"string"},"questionType":{"type":"string","enum":["COMPREHENSION","INFERENCE","APPLICATION","ARGUMENT_STRUCTURE"]},"optionRationales":{"type":"array","minItems":4,"maxItems":4,"items":{"type":"string"}}}}}}}}}}}}
                 """);
     }
 
@@ -181,9 +308,7 @@ public class GeminiQuizGateway implements QuizAiGateway {
     @Override public String generationModel() { return properties.getGemini().getGenerationModel(); }
     @Override public String validationModel() { return properties.getGemini().getValidationModel(); }
 
-    public record GeneratedQuiz(List<GeneratedPassage> passages) {}
-    public record GeneratedPassage(String title, String topic, String content,
-                                   List<GeneratedQuestion> questions) {}
-    public record GeneratedQuestion(String content, List<String> options,
-                                    int correctOptionPosition, String explanation, String evidence) {}
+    public record GeneratedQuizPayload(List<QuizGenerationData.GeneratedPassage> passages) {}
+    public record RepairPayload(List<PassageRepair> repairs) {}
+    public record PassageRepair(int passagePosition, QuizGenerationData.GeneratedPassage passage) {}
 }

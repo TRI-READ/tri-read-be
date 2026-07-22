@@ -13,6 +13,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.core.session.SessionRegistry;
 
 class AuthControllerTest {
 
@@ -20,8 +21,10 @@ class AuthControllerTest {
     private final LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
     private final HttpSessionSecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
+    private final SessionRegistry sessionRegistry = mock(SessionRegistry.class);
     private final AuthController authController =
-            new AuthController(authService, loginAttemptService, securityContextRepository);
+            new AuthController(authService, loginAttemptService, securityContextRepository,
+                    sessionRegistry);
 
     @AfterEach
     void clearSecurityContext() {
@@ -53,5 +56,8 @@ class AuthControllerTest {
         assertThat(savedContext.getAuthentication().isAuthenticated()).isTrue();
         assertThat(savedContext.getAuthentication().getPrincipal())
                 .isEqualTo(new AuthPrincipal(3L, "reader", "Reader", "USER"));
+        org.mockito.Mockito.verify(sessionRegistry).registerNewSession(
+                request.getSession(false).getId(),
+                new AuthPrincipal(3L, "reader", "Reader", "USER"));
     }
 }

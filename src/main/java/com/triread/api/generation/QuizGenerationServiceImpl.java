@@ -79,20 +79,32 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 mapper.findRecentPassages(targetDate, targetDate.minusDays(7)));
         String latestRaw = null;
         String latestError = null;
+        QuizGenerationData.GeneratedQuiz candidate = null;
+        List<QuizValidation.Issue> repairIssues = List.of();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             Long persistedQuizId = null;
             try {
                 updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
-                AdminQuizService.CreateQuiz generated = callAi(logId, "GENERATION",
-                        aiGateway.generationModel(), () -> aiGateway.generate(
-                                targetDate, List.copyOf(excludedPassages), prompts.generation()));
-                latestRaw = serialize(generated);
+                if (candidate == null) {
+                    candidate = callAi(logId, "GENERATION", aiGateway.generationModel(),
+                            () -> aiGateway.generate(targetDate, List.copyOf(excludedPassages),
+                                    prompts.generation()));
+                } else {
+                    QuizGenerationData.GeneratedQuiz previousCandidate = candidate;
+                    List<QuizValidation.Issue> previousIssues = repairIssues;
+                    candidate = callAi(logId, "REPAIR", aiGateway.generationModel(),
+                            () -> aiGateway.repair(previousCandidate, previousIssues,
+                                    prompts.generation()));
+                }
+                latestRaw = serialize(candidate);
+                AdminQuizService.CreateQuiz generated = candidate.toCreateQuiz();
                 updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
 
-                QuizValidation.Result ruleResult = ruleValidator.validate(generated);
+                QuizValidation.Result ruleResult = ruleValidator.validate(candidate);
                 saveValidation(logId, null, attempt, "RULE", ruleResult);
                 if (!passes(ruleResult)) {
+                    repairIssues = ruleResult.issues();
                     latestError = summarize(ruleResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, ruleResult.score(), latestRaw, latestError,
@@ -103,8 +115,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 QuizValidation.Result diversityResult = topicDiversityValidator.validate(
                         generated, excludedPassages);
                 saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
-                excludedPassages.addAll(toRecentPassages(generated));
                 if (!passes(diversityResult)) {
+                    repairIssues = diversityResult.issues();
                     latestError = summarize(diversityResult);
                     updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                             attempt, diversityResult.score(), latestRaw, latestError,
@@ -114,12 +126,14 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
                 int finalScore = Math.min(ruleResult.score(), diversityResult.score());
                 if (properties.isAiValidationEnabled()) {
+                    QuizGenerationData.GeneratedQuiz validatedCandidate = candidate;
                     QuizValidation.Result aiResult = callAi(logId, "VALIDATION",
                             properties.getGemini().getValidationModel(),
-                            () -> aiGateway.validate(generated, prompts.validation()));
+                            () -> aiGateway.validate(validatedCandidate, prompts.validation()));
                     saveValidation(logId, null, attempt, "AI", aiResult);
                     finalScore = Math.min(finalScore, aiResult.score());
                     if (!passes(aiResult)) {
+                        repairIssues = aiResult.issues();
                         latestError = summarize(aiResult);
                         updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
                                 attempt, finalScore, latestRaw, latestError,
@@ -194,19 +208,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         Instant from = today.atStartOfDay(clock.getZone()).toInstant();
         Instant until = today.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
         return mapper.countLogsCreatedBetween(from, until);
-    }
-
-    private List<QuizGenerationData.RecentPassageRow> toRecentPassages(
-            AdminQuizService.CreateQuiz quiz
-    ) {
-        if (quiz == null || quiz.passages() == null) return List.of();
-        List<QuizGenerationData.RecentPassageRow> passages = new ArrayList<>();
-        for (int index = 0; index < quiz.passages().size(); index++) {
-            AdminQuizService.CreatePassage passage = quiz.passages().get(index);
-            passages.add(new QuizGenerationData.RecentPassageRow(
-                    quiz.challengeDate(), index + 1, passage.title(), passage.topic(), passage.content()));
-        }
-        return passages;
     }
 
     private boolean isTransient(ApiException exception) {

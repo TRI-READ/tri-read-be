@@ -21,6 +21,35 @@ class RuleBasedQuizValidatorTest {
     }
 
     @Test
+    void acceptsGeneratedQuizWithOptionSelfReviewAndVariedQuestionTypes() {
+        QuizValidation.Result result = validator.validate(validGeneratedQuiz());
+
+        assertThat(result.passed()).isTrue();
+        assertThat(result.score()).isEqualTo(100);
+    }
+
+    @Test
+    void rejectsMissingOptionRationalesAndRepeatedQuestionTypes() {
+        QuizGenerationData.GeneratedQuiz valid = validGeneratedQuiz();
+        QuizGenerationData.GeneratedPassage first = valid.passages().getFirst();
+        List<QuizGenerationData.GeneratedQuestion> questions = first.questions().stream()
+                .map(question -> new QuizGenerationData.GeneratedQuestion(
+                        question.content(), question.options(), question.correctOptionPosition(),
+                        question.explanation(), question.evidence(), "COMPREHENSION", List.of()))
+                .toList();
+        List<QuizGenerationData.GeneratedPassage> passages = new ArrayList<>(valid.passages());
+        passages.set(0, new QuizGenerationData.GeneratedPassage(
+                first.title(), first.topic(), first.content(), questions));
+
+        QuizValidation.Result result = validator.validate(
+                new QuizGenerationData.GeneratedQuiz(valid.challengeDate(), passages));
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.issues()).extracting(QuizValidation.Issue::code)
+                .contains("INVALID_OPTION_RATIONALE_COUNT", "INSUFFICIENT_QUESTION_TYPE_VARIETY");
+    }
+
+    @Test
     void rejectsDuplicateOptionsAndEvidenceOutsidePassage() {
         AdminQuizService.CreateQuiz valid = validQuiz();
         AdminQuizService.CreatePassage first = valid.passages().getFirst();
@@ -63,5 +92,27 @@ class RuleBasedQuizValidatorTest {
                     "지문 " + passage, "주제 " + passage, content, questions));
         }
         return new AdminQuizService.CreateQuiz(LocalDate.of(2026, 7, 20), passages);
+    }
+
+    static QuizGenerationData.GeneratedQuiz validGeneratedQuiz() {
+        AdminQuizService.CreateQuiz quiz = validQuiz();
+        List<String> types = List.of("COMPREHENSION", "INFERENCE", "APPLICATION");
+        return new QuizGenerationData.GeneratedQuiz(quiz.challengeDate(), quiz.passages().stream()
+                .map(passage -> new QuizGenerationData.GeneratedPassage(
+                        passage.title(), passage.topic(), passage.content(),
+                        java.util.stream.IntStream.range(0, passage.questions().size())
+                                .mapToObj(index -> {
+                                    AdminQuizService.CreateQuestion question = passage.questions().get(index);
+                                    return new QuizGenerationData.GeneratedQuestion(
+                                            question.content(), question.options(),
+                                            question.correctOptionPosition(), question.explanation(),
+                                            question.evidence(), types.get(index),
+                                            List.of(
+                                                    "첫 번째 보기는 지문의 핵심 근거와 비교하여 판단할 수 있습니다.",
+                                                    "두 번째 보기는 지문의 핵심 근거와 비교하여 판단할 수 있습니다.",
+                                                    "세 번째 보기는 지문의 핵심 근거와 비교하여 판단할 수 있습니다.",
+                                                    "네 번째 보기는 지문의 핵심 근거와 비교하여 판단할 수 있습니다."));
+                                }).toList()))
+                .toList());
     }
 }

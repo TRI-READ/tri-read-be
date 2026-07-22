@@ -7,6 +7,7 @@ import com.triread.api.common.ApiException;
 import com.triread.api.prompt.PromptTemplateService;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.JsonNode;
@@ -70,6 +71,45 @@ class GeminiQuizGatewayTest {
                 .contains("Changing only the title or angle still counts as reuse")
                 .contains("Quantum computing and information processing")
                 .contains("area 2");
+    }
+
+    @Test
+    void selectsOnlyPassagesNamedByValidationIssuesForRepair() {
+        GeminiQuizGateway gateway = gateway();
+
+        Set<Integer> positions = gateway.repairPositions(List.of(
+                new QuizValidation.Issue("ERROR", "AMBIGUOUS", 2, 1, "Ambiguous"),
+                new QuizValidation.Issue("ERROR", "BAD_EVIDENCE", 2, 3, "Bad evidence")));
+
+        assertThat(positions).containsExactly(2);
+    }
+
+    @Test
+    void mergesRequestedRepairWithoutChangingOtherPassages() {
+        GeminiQuizGateway gateway = gateway();
+        QuizGenerationData.GeneratedQuiz quiz = RuleBasedQuizValidatorTest.validGeneratedQuiz();
+        QuizGenerationData.GeneratedPassage original = quiz.passages().get(1);
+        QuizGenerationData.GeneratedPassage replacement = new QuizGenerationData.GeneratedPassage(
+                "replacement", original.topic(), original.content(), original.questions());
+
+        QuizGenerationData.GeneratedQuiz merged = gateway.mergeRepairs(quiz, Set.of(2), List.of(
+                new GeminiQuizGateway.PassageRepair(2, replacement)));
+
+        assertThat(merged.passages().get(0)).isSameAs(quiz.passages().get(0));
+        assertThat(merged.passages().get(1).title()).isEqualTo("replacement");
+        assertThat(merged.passages().get(2)).isSameAs(quiz.passages().get(2));
+    }
+
+    @Test
+    void rejectsRepairThatDoesNotMatchRequestedPositions() {
+        GeminiQuizGateway gateway = gateway();
+        QuizGenerationData.GeneratedQuiz quiz = RuleBasedQuizValidatorTest.validGeneratedQuiz();
+
+        assertThatThrownBy(() -> gateway.mergeRepairs(quiz, Set.of(1, 2), List.of(
+                new GeminiQuizGateway.PassageRepair(1, quiz.passages().getFirst()))))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("GEMINI_REPAIR_RESPONSE_INVALID"));
     }
 
     private GeminiQuizGateway gateway() {

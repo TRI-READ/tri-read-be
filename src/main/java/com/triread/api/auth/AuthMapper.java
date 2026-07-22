@@ -25,6 +25,10 @@ public interface AuthMapper {
 
     int updateRole(@Param("userId") long userId, @Param("appRole") String appRole);
 
+    int updatePinHash(@Param("userId") long userId, @Param("pinHash") String pinHash);
+
+    int updateEnabled(@Param("userId") long userId, @Param("enabled") boolean enabled);
+
     int countEnabledAdmins();
 
     int promoteBootstrapAdmin(String loginName);

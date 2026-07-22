@@ -81,4 +81,14 @@ public final class GroupData {
             int usedCount
     ) {
     }
+
+    public record InviteManagementRow(
+            long inviteId,
+            boolean enabled,
+            Instant expiresAt,
+            Integer maxUses,
+            int usedCount,
+            Instant createdAt
+    ) {
+    }
 }

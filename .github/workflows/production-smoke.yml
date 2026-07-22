@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: production-smoke
@@ -32,3 +33,27 @@ jobs:
           response="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors --max-time 15 \
             https://tri-read.duckdns.org/)"
           echo "$response" | grep -q 'TRI:READ'
+
+      - name: Report production smoke failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = '[운영 알림] 운영 서비스 점검 실패';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `운영 홈페이지 또는 API 상태 점검이 실패했습니다.\n\n- 실행: ${runUrl}\n- 시각(UTC): ${new Date().toISOString()}\n\n서비스 상태와 최근 배포 로그를 확인해 주세요.`;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const existing = issues.find(issue => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: existing.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({ ...context.repo, title, body });
+            }

@@ -77,6 +77,26 @@ public class AuthService {
         return toAuthenticatedUser(user);
     }
 
+    @Transactional
+    public void changePin(long userId, String currentPin, String newPin) {
+        AuthUser user = authMapper.findById(userId);
+        if (user == null || !user.isEnabled()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "The user was not found.");
+        }
+        if (!passwordEncoder.matches(currentPin, user.getPinHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CURRENT_PIN_INCORRECT",
+                    "The current PIN is incorrect.");
+        }
+        if (passwordEncoder.matches(newPin, user.getPinHash())) {
+            throw new ApiException(HttpStatus.CONFLICT, "PIN_REUSE_NOT_ALLOWED",
+                    "The new PIN must be different from the current PIN.");
+        }
+        if (authMapper.updatePinHash(userId, passwordEncoder.encode(newPin)) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "PIN_CHANGE_FAILED",
+                    "The PIN could not be changed.");
+        }
+    }
+
     private String normalizeLoginName(String loginName) {
         return loginName.trim().toLowerCase(Locale.ROOT);
     }

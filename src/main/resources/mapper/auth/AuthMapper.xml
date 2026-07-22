@@ -68,6 +68,19 @@
           AND enabled = TRUE
     </update>
 
+    <update id="updatePinHash">
+        UPDATE app_users
+        SET pin_hash = #{pinHash}
+        WHERE id = #{userId}
+          AND enabled = TRUE
+    </update>
+
+    <update id="updateEnabled">
+        UPDATE app_users
+        SET enabled = #{enabled}
+        WHERE id = #{userId}
+    </update>
+
     <select id="countEnabledAdmins" resultType="int">
         SELECT COUNT(*)
         FROM app_users

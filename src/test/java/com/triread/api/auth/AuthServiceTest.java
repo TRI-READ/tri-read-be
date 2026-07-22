@@ -94,6 +94,32 @@ class AuthServiceTest {
                 });
     }
 
+    @Test
+    void changePinVerifiesCurrentPinAndStoresNewHash() {
+        AuthUser user = enabledUser();
+        when(authMapper.findById(11L)).thenReturn(user);
+        when(passwordEncoder.matches("1234", "hashed-pin")).thenReturn(true);
+        when(passwordEncoder.matches("5678", "hashed-pin")).thenReturn(false);
+        when(passwordEncoder.encode("5678")).thenReturn("new-hashed-pin");
+        when(authMapper.updatePinHash(11L, "new-hashed-pin")).thenReturn(1);
+
+        authService.changePin(11L, "1234", "5678");
+
+        verify(authMapper).updatePinHash(11L, "new-hashed-pin");
+    }
+
+    @Test
+    void changePinRejectsIncorrectCurrentPin() {
+        when(authMapper.findById(11L)).thenReturn(enabledUser());
+        when(passwordEncoder.matches("9999", "hashed-pin")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.changePin(11L, "9999", "5678"))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getCode()).isEqualTo("CURRENT_PIN_INCORRECT");
+                });
+    }
+
     private AuthUser enabledUser() {
         AuthUser user = new AuthUser();
         user.setId(11L);

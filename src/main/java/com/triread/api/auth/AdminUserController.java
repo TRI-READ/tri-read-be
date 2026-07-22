@@ -3,6 +3,7 @@ package com.triread.api.auth;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Pattern;
 import com.triread.api.common.PageResponse;
 import com.triread.api.audit.AdminAuditService;
 import java.util.Map;
@@ -47,5 +48,37 @@ public class AdminUserController {
         return updated;
     }
 
+    @PatchMapping("/{userId}/enabled")
+    public AdminUserService.UserSummary updateEnabled(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable @Positive long userId,
+            @Valid @RequestBody UpdateEnabledRequest request
+    ) {
+        AdminUserService.UserSummary updated = service.updateEnabled(
+                principal.userId(), userId, request.enabled());
+        auditService.record(principal.userId(), "USER_STATUS_UPDATED", "USER", userId,
+                Map.of("enabled", updated.enabled()));
+        return updated;
+    }
+
+    @PatchMapping("/{userId}/pin")
+    public void resetPin(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable @Positive long userId,
+            @Valid @RequestBody ResetPinRequest request
+    ) {
+        int invalidatedSessions = service.resetPin(userId, request.newPin());
+        auditService.record(principal.userId(), "USER_PIN_RESET", "USER", userId,
+                Map.of("invalidatedSessions", invalidatedSessions));
+    }
+
     public record UpdateRoleRequest(@NotBlank String role) {}
+
+    public record UpdateEnabledRequest(boolean enabled) {}
+
+    public record ResetPinRequest(
+            @NotBlank
+            @Pattern(regexp = "\\d{4,12}", message = "PIN must contain 4 to 12 digits.")
+            String newPin
+    ) {}
 }

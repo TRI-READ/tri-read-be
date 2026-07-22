@@ -14,14 +14,37 @@ public interface GroupService {
 
     GroupDetail joinGroup(long userId, String rawInviteCode);
 
-    InviteCodeResponse renewInvite(long groupId, long userId);
+    InviteCodeResponse renewInvite(long groupId, long userId, Integer expiresInDays,
+                                   Integer maxUses, boolean revokeExisting);
+
+    List<InviteSummary> getInvites(long groupId, long userId);
+
+    void revokeInvite(long groupId, long inviteId, long userId);
+
+    void removeMember(long groupId, long memberUserId, long userId);
+
+    GroupDetail transferOwnership(long groupId, long newOwnerUserId, long userId);
 
     GroupActivity getWeeklyActivity(long groupId, long userId);
 
     record CreatedGroupResponse(GroupDetail group, String inviteCode) {
     }
 
-    record InviteCodeResponse(String inviteCode) {
+    record InviteCodeResponse(String inviteCode, InviteSummary invite) {
+    }
+
+    record InviteSummary(
+            long inviteId,
+            boolean enabled,
+            Instant expiresAt,
+            Integer maxUses,
+            int usedCount,
+            Instant createdAt
+    ) {
+        static InviteSummary from(GroupData.InviteManagementRow invite) {
+            return new InviteSummary(invite.inviteId(), invite.enabled(), invite.expiresAt(),
+                    invite.maxUses(), invite.usedCount(), invite.createdAt());
+        }
     }
 
     record GroupSummary(
