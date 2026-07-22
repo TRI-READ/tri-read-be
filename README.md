@@ -155,6 +155,8 @@ GET    /api/admin/audit-logs
 
 AI 생성 결과는 서버 규칙 검증과 최근 지문의 제목·주제·본문 유사도 검사를 통과해야 `REVIEWED` 상태가 됩니다. 별도의 Gemini 2차 검증은 호출 비용을 통제하기 위해 기본적으로 꺼져 있으며 `QUIZ_AI_VALIDATION_ENABLED=true`일 때만 추가로 실행합니다. 자동 발행은 기본적으로 꺼져 있어 관리자가 최종 내용을 확인할 수 있습니다. 실패 기록은 관리자 화면에서 원인을 확인하고 다시 생성할 수 있습니다.
 
+첫 생성 결과가 검증에 실패하면 다음 시도에서는 전체 세트를 버리지 않고 오류가 발생한 지문만 다시 생성합니다. 서버는 규칙·중복·선택적 AI 검증에서 받은 지문 위치와 실패 원인을 Gemini에 전달하고, 통과한 지문은 그대로 보존합니다. 각 문항은 유형(`COMPREHENSION`, `INFERENCE`, `APPLICATION`, `ARGUMENT_STRUCTURE`)과 선택지 4개 각각의 판단 근거를 함께 생성하며, 서버는 지문별 문항 유형 다양성, 근거 개수와 최소 설명 길이를 저장 전에 검사합니다. 부분 재생성 호출은 `REPAIR` 용도로 기록되어 관리자 생성 로그와 일일 호출량에 포함됩니다.
+
 기본 생성 스케줄은 매일 새벽에 향후 평일 3일의 재고를 확인하고, 30분 뒤 한 차례 더 부족분을 복구합니다. 시간은 `QUIZ_GENERATION_CRON`, `QUIZ_GENERATION_RECOVERY_CRON`으로 조정합니다. 각 날짜는 최대 3세트를 보유하며 사용되지 않은 기존 발행 문제를 우선 재배정해 Gemini 호출을 줄입니다.
 
 호출량 보호를 위해 기본값은 스케줄 실행당 최대 3개 작업, 하루 최대 3개 작업, 작업당 최대 2회 시도, 실제 Gemini API 호출 하루 최대 6회입니다. 두 한도는 서울 기준 자정에 초기화되며 실패한 생성도 사용량에 포함됩니다. 중복 검사는 최근 DB 지문을 이용한 로컬 검사로 처리하고, 선택적으로 켠 AI 검증은 로컬 규칙과 중복 검사를 통과한 결과에만 수행합니다. `QUIZ_INVENTORY_DAYS`, `QUIZ_GENERATION_MAX_JOBS_PER_RUN`, `QUIZ_GENERATION_MAX_JOBS_PER_DAY`, `QUIZ_GENERATION_MAX_ATTEMPTS`, `QUIZ_GENERATION_MAX_API_CALLS_PER_DAY`로 값을 조정할 수 있습니다. 관리자 생성 운영 화면에서 오늘의 호출량과 한도를 확인할 수 있습니다.

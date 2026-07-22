@@ -12,6 +12,34 @@ import org.springframework.stereotype.Component;
 public class RuleBasedQuizValidator implements QuizContentValidator {
     private static final int PASSAGE_MIN_LENGTH = 700;
     private static final int PASSAGE_MAX_LENGTH = 4_000;
+    private static final Set<String> QUESTION_TYPES = Set.of(
+            "COMPREHENSION", "INFERENCE", "APPLICATION", "ARGUMENT_STRUCTURE");
+
+    public QuizValidation.Result validate(QuizGenerationData.GeneratedQuiz generated) {
+        if (generated == null) {
+            return result(List.of(error("MISSING_GENERATED_QUIZ", null, null,
+                    "Generated quiz is missing.")));
+        }
+        List<QuizValidation.Issue> issues = new ArrayList<>(validate(generated.toCreateQuiz()).issues());
+        if (generated.passages().size() != 3) return result(issues);
+
+        for (int passageIndex = 0; passageIndex < generated.passages().size(); passageIndex++) {
+            QuizGenerationData.GeneratedPassage passage = generated.passages().get(passageIndex);
+            int passagePosition = passageIndex + 1;
+            if (passage == null || passage.questions().size() != 3) continue;
+            Set<String> types = new HashSet<>();
+            for (int questionIndex = 0; questionIndex < passage.questions().size(); questionIndex++) {
+                QuizGenerationData.GeneratedQuestion question = passage.questions().get(questionIndex);
+                int questionPosition = questionIndex + 1;
+                validateSelfReview(question, passagePosition, questionPosition, types, issues);
+            }
+            if (types.size() < 3) {
+                issues.add(error("INSUFFICIENT_QUESTION_TYPE_VARIETY", passagePosition, null,
+                        "The three questions in a passage must use at least three distinct types."));
+            }
+        }
+        return result(issues);
+    }
 
     @Override
     public QuizValidation.Result validate(AdminQuizService.CreateQuiz quiz) {
@@ -105,6 +133,36 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
                 .contains(normalizeWhitespace(question.evidence()))) {
             issues.add(error("EVIDENCE_NOT_IN_PASSAGE", passagePosition, questionPosition,
                     "Evidence must be an exact excerpt from the passage."));
+        }
+    }
+
+    private void validateSelfReview(QuizGenerationData.GeneratedQuestion question,
+                                    int passagePosition, int questionPosition,
+                                    Set<String> passageTypes,
+                                    List<QuizValidation.Issue> issues) {
+        if (question == null) {
+            issues.add(error("MISSING_GENERATED_QUESTION", passagePosition, questionPosition,
+                    "Generated question metadata is missing."));
+            return;
+        }
+        String type = question.questionType() == null ? "" : question.questionType().trim();
+        if (!QUESTION_TYPES.contains(type)) {
+            issues.add(error("INVALID_QUESTION_TYPE", passagePosition, questionPosition,
+                    "Question type must be one of the supported values."));
+        } else {
+            passageTypes.add(type);
+        }
+        if (question.optionRationales().size() != 4) {
+            issues.add(error("INVALID_OPTION_RATIONALE_COUNT", passagePosition, questionPosition,
+                    "Each option requires one aligned rationale."));
+            return;
+        }
+        for (String rationale : question.optionRationales()) {
+            if (blank(rationale) || rationale.trim().length() < 15) {
+                issues.add(error("OPTION_RATIONALE_TOO_SHORT", passagePosition, questionPosition,
+                        "Every option rationale must explain the judgment in at least 15 characters."));
+                break;
+            }
         }
     }
 

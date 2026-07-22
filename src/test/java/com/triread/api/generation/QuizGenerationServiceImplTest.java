@@ -78,7 +78,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void savesReviewedQuizAfterBothValidatorsPass() {
         LocalDate date = LocalDate.of(2026, 7, 20);
-        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result ruleResult = new QuizValidation.Result(true, 100, List.of());
         QuizValidation.Result aiResult = new QuizValidation.Result(true, 96, List.of());
         AdminQuizService.QuizDetail detail = detail(7L, date, "REVIEWED");
@@ -86,7 +86,7 @@ class QuizGenerationServiceImplTest {
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(ruleResult);
         when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(aiResult);
-        when(adminQuizService.createReviewedDraft(generated, "GEMINI", "generation-model",
+        when(adminQuizService.createReviewedDraft(generated.toCreateQuiz(), "GEMINI", "generation-model",
                 "g2/v3", 11L, 12L))
                 .thenReturn(detail);
 
@@ -103,12 +103,14 @@ class QuizGenerationServiceImplTest {
     @Test
     void retriesGenerationWhenRuleValidationFails() {
         LocalDate date = LocalDate.of(2026, 7, 20);
-        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result failed = new QuizValidation.Result(false, 70, List.of(
                 new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
+        when(aiGateway.repair(eq(generated), eq(failed.issues()), eq(GENERATION_PROMPT)))
+                .thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(failed, passed);
         when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(passed);
         when(adminQuizService.createReviewedDraft(any(), anyString(), anyString(), anyString(), anyLong(), anyLong()))
@@ -117,7 +119,8 @@ class QuizGenerationServiceImplTest {
         QuizGenerationService.GenerationResult result = service.generate(date);
 
         assertThat(result.attemptCount()).isEqualTo(2);
-        verify(aiGateway, times(2)).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
+        verify(aiGateway).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
+        verify(aiGateway).repair(eq(generated), eq(failed.issues()), eq(GENERATION_PROMPT));
         verify(mapper).updateLog(eq(42L), isNull(), eq("RETRYING"), eq(1), eq(70),
                 anyString(), anyString(), isNull(), eq(NOW));
     }
@@ -125,7 +128,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void retriesTransientGeminiFailure() {
         LocalDate date = LocalDate.of(2026, 7, 20);
-        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
 
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT)))
@@ -173,16 +176,19 @@ class QuizGenerationServiceImplTest {
     @Test
     void stopsAfterConfiguredTwoAttempts() {
         LocalDate date = LocalDate.of(2026, 7, 20);
-        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result failed = new QuizValidation.Result(false, 70, List.of(
                 new QuizValidation.Issue("ERROR", "AMBIGUOUS", 1, 1, "Ambiguous question")));
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
+        when(aiGateway.repair(eq(generated), eq(failed.issues()), eq(GENERATION_PROMPT)))
+                .thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(failed);
 
         assertThatThrownBy(() -> service.generate(date))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.getCode()).isEqualTo("QUIZ_GENERATION_FAILED"));
-        verify(aiGateway, times(2)).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
+        verify(aiGateway).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
+        verify(aiGateway).repair(eq(generated), eq(failed.issues()), eq(GENERATION_PROMPT));
         verify(aiGateway, never()).validate(any(), any());
     }
 
@@ -239,7 +245,7 @@ class QuizGenerationServiceImplTest {
         QuizGenerationData.GenerationLogRow failedLog = new QuizGenerationData.GenerationLogRow(
                 41L, null, date, "GEMINI", "generation-model", "g2/v3", 11L, 12L,
                 "FAILED", 3, null, "temporary failure", NOW, NOW, NOW);
-        AdminQuizService.CreateQuiz generated = RuleBasedQuizValidatorTest.validQuiz();
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
         when(mapper.findLog(41L)).thenReturn(failedLog);
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);

@@ -1,7 +1,9 @@
 package com.triread.api.generation;
 
+import com.triread.api.admin.AdminQuizService;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public final class QuizGenerationData {
     private QuizGenerationData() {}
@@ -57,6 +59,46 @@ public final class QuizGenerationData {
 
     public record RecentPassageRow(LocalDate challengeDate, int position,
                                    String title, String topic, String content) {}
+
+    public record GeneratedQuiz(LocalDate challengeDate, List<GeneratedPassage> passages) {
+        public GeneratedQuiz {
+            passages = passages == null ? List.of() : List.copyOf(passages);
+        }
+
+        public AdminQuizService.CreateQuiz toCreateQuiz() {
+            return new AdminQuizService.CreateQuiz(challengeDate, passages.stream()
+                    .map(GeneratedPassage::toCreatePassage)
+                    .toList());
+        }
+    }
+
+    public record GeneratedPassage(String title, String topic, String content,
+                                   List<GeneratedQuestion> questions) {
+        public GeneratedPassage {
+            questions = questions == null ? List.of() : List.copyOf(questions);
+        }
+
+        public AdminQuizService.CreatePassage toCreatePassage() {
+            return new AdminQuizService.CreatePassage(title, topic, content, questions.stream()
+                    .map(GeneratedQuestion::toCreateQuestion)
+                    .toList());
+        }
+    }
+
+    public record GeneratedQuestion(String content, List<String> options,
+                                    int correctOptionPosition, String explanation,
+                                    String evidence, String questionType,
+                                    List<String> optionRationales) {
+        public GeneratedQuestion {
+            options = options == null ? List.of() : List.copyOf(options);
+            optionRationales = optionRationales == null ? List.of() : List.copyOf(optionRationales);
+        }
+
+        public AdminQuizService.CreateQuestion toCreateQuestion() {
+            return new AdminQuizService.CreateQuestion(content, options, correctOptionPosition,
+                    explanation, evidence);
+        }
+    }
 
     public static final class ApiCallInsert {
         private Long id;
