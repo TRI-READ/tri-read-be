@@ -121,4 +121,84 @@
         FROM ai_api_calls
         WHERE created_at &gt;= #{from} AND created_at &lt; #{until}
     </select>
+
+    <select id="findSourceBrief"
+            resultType="com.triread.api.generation.QuizGenerationData$SourceBriefRow">
+        SELECT id AS source_brief_id, target_date, status, model, briefing_text, error_message
+        FROM source_briefs
+        WHERE target_date = #{targetDate}
+    </select>
+
+    <sql id="sourceColumns">
+        id AS content_source_id, source_brief_id, passage_position, title, publisher,
+        published_on, source_url, summary, retrieved_at, verified
+    </sql>
+
+    <select id="findSourcesByBrief"
+            resultType="com.triread.api.generation.QuizGenerationData$ContentSource">
+        SELECT <include refid="sourceColumns"/>
+        FROM content_sources
+        WHERE source_brief_id = #{sourceBriefId}
+        ORDER BY passage_position, id
+    </select>
+
+    <select id="findSourcesByGenerationLog"
+            resultType="com.triread.api.generation.QuizGenerationData$ContentSource">
+        SELECT cs.id AS content_source_id, cs.source_brief_id, cs.passage_position,
+               cs.title, cs.publisher, cs.published_on, cs.source_url, cs.summary,
+               cs.retrieved_at, cs.verified
+        FROM generation_logs gl
+        JOIN source_briefs sb ON sb.target_date = gl.target_date
+        JOIN content_sources cs ON cs.source_brief_id = sb.id
+        WHERE gl.id = #{generationLogId}
+        ORDER BY cs.passage_position, cs.id
+    </select>
+
+    <select id="findSourcesByPassage"
+            resultType="com.triread.api.generation.QuizGenerationData$ContentSource">
+        SELECT cs.id AS content_source_id, cs.source_brief_id, cs.passage_position,
+               cs.title, cs.publisher, cs.published_on, cs.source_url, cs.summary,
+               cs.retrieved_at, cs.verified
+        FROM passage_sources ps
+        JOIN content_sources cs ON cs.id = ps.content_source_id
+        WHERE ps.passage_id = #{passageId}
+        ORDER BY cs.id
+    </select>
+
+    <insert id="insertSourceBrief" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO source_briefs (
+            target_date, status, model, briefing_text, error_message
+        ) VALUES (
+            #{targetDate}, #{status}, #{model}, #{briefingText}, #{errorMessage}
+        )
+        ON CONFLICT (target_date) DO UPDATE
+        SET status = EXCLUDED.status,
+            model = EXCLUDED.model,
+            briefing_text = EXCLUDED.briefing_text,
+            error_message = EXCLUDED.error_message,
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <insert id="insertContentSource" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO content_sources (
+            source_brief_id, passage_position, title, publisher,
+            published_on, source_url, summary
+        ) VALUES (
+            #{sourceBriefId}, #{passagePosition}, #{title}, #{publisher},
+            #{publishedOn}, #{sourceUrl}, #{summary}
+        )
+        ON CONFLICT (source_brief_id, source_url) DO NOTHING
+    </insert>
+
+    <insert id="linkSourcesToQuiz">
+        INSERT INTO passage_sources (passage_id, content_source_id)
+        SELECT p.id, cs.id
+        FROM passages p
+        JOIN content_sources cs
+          ON cs.source_brief_id = #{sourceBriefId}
+         AND cs.passage_position = p.position
+         AND cs.verified = TRUE
+        WHERE p.quiz_set_id = #{quizSetId}
+        ON CONFLICT DO NOTHING
+    </insert>
 </mapper>

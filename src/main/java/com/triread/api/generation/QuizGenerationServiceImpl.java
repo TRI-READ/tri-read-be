@@ -74,6 +74,16 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId(), "GENERATING");
         mapper.insertLog(log);
         long logId = log.getId();
+        QuizGenerationData.SourceBrief sourceBrief;
+        try {
+            sourceBrief = resolveSourceBrief(logId, targetDate);
+        } catch (RuntimeException exception) {
+            String error = exception instanceof ApiException apiException
+                    ? apiException.getCode() + ": " + apiException.getMessage()
+                    : exception.getClass().getSimpleName() + ": " + exception.getMessage();
+            updateLog(logId, null, "FAILED", 0, null, null, error, clock.instant());
+            throw exception;
+        }
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
         List<QuizGenerationData.RecentPassageRow> excludedPassages = new ArrayList<>(
                 mapper.findRecentPassages(targetDate, targetDate.minusDays(7)));
@@ -88,14 +98,20 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
                 if (candidate == null) {
                     candidate = callAi(logId, "GENERATION", aiGateway.generationModel(),
-                            () -> aiGateway.generate(targetDate, List.copyOf(excludedPassages),
-                                    prompts.generation()));
+                            () -> sourceBrief.grounded()
+                                    ? aiGateway.generate(sourceBrief, List.copyOf(excludedPassages),
+                                            prompts.generation())
+                                    : aiGateway.generate(targetDate, List.copyOf(excludedPassages),
+                                            prompts.generation()));
                 } else {
                     QuizGenerationData.GeneratedQuiz previousCandidate = candidate;
                     List<QuizValidation.Issue> previousIssues = repairIssues;
                     candidate = callAi(logId, "REPAIR", aiGateway.generationModel(),
-                            () -> aiGateway.repair(previousCandidate, previousIssues,
-                                    prompts.generation()));
+                            () -> sourceBrief.grounded()
+                                    ? aiGateway.repair(previousCandidate, previousIssues,
+                                            prompts.generation(), sourceBrief)
+                                    : aiGateway.repair(previousCandidate, previousIssues,
+                                            prompts.generation()));
                 }
                 latestRaw = serialize(candidate);
                 AdminQuizService.CreateQuiz generated = candidate.toCreateQuiz();
@@ -147,7 +163,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                         prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId());
                 long quizSetId = quiz.quiz().quizSetId();
                 persistedQuizId = quizSetId;
-                boolean autoPublished = properties.isAutoPublish();
+                if (sourceBrief.grounded()) {
+                    mapper.linkSourcesToQuiz(quizSetId, sourceBrief.sourceBriefId());
+                }
+                boolean autoPublished = properties.isAutoPublish() && sourceBrief.grounded();
                 if (autoPublished) quiz = adminQuizService.publish(quizSetId);
                 String status = autoPublished ? "PUBLISHED" : "READY";
                 updateLog(logId, quizSetId, status, attempt, finalScore,
@@ -182,6 +201,43 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
         throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUIZ_GENERATION_FAILED",
                 "Quiz generation failed after " + maxAttempts + " attempts. " + latestError);
+    }
+
+    private QuizGenerationData.SourceBrief resolveSourceBrief(long logId, LocalDate targetDate) {
+        QuizGenerationData.SourceBriefRow existing = mapper.findSourceBrief(targetDate);
+        if (existing != null && "READY".equals(existing.status())) {
+            return toSourceBrief(existing);
+        }
+        if (!properties.isSourceGroundingEnabled()) {
+            return new QuizGenerationData.SourceBrief(0, targetDate, "DISABLED",
+                    aiGateway.sourceModel(), "", null, List.of());
+        }
+        try {
+            QuizGenerationData.SourceDiscovery discovery = callAi(
+                    logId, "SOURCE_DISCOVERY", aiGateway.sourceModel(),
+                    () -> aiGateway.discoverSources(targetDate));
+            QuizGenerationData.SourceBriefInsert insert = new QuizGenerationData.SourceBriefInsert(
+                    targetDate, "READY", aiGateway.sourceModel(), discovery.briefingText(), null);
+            mapper.insertSourceBrief(insert);
+            discovery.sources().forEach(source -> mapper.insertContentSource(
+                    new QuizGenerationData.ContentSourceInsert(insert.getId(), source)));
+            QuizGenerationData.SourceBriefRow saved = mapper.findSourceBrief(targetDate);
+            return toSourceBrief(saved);
+        } catch (RuntimeException exception) {
+            QuizGenerationData.SourceBriefInsert failed = new QuizGenerationData.SourceBriefInsert(
+                    targetDate, "FAILED", aiGateway.sourceModel(), null,
+                    exception.getMessage());
+            mapper.insertSourceBrief(failed);
+            throw exception;
+        }
+    }
+
+    private QuizGenerationData.SourceBrief toSourceBrief(
+            QuizGenerationData.SourceBriefRow row) {
+        return new QuizGenerationData.SourceBrief(
+                row.sourceBriefId(), row.targetDate(), row.status(), row.model(),
+                row.briefingText(), row.errorMessage(),
+                mapper.findSourcesByBrief(row.sourceBriefId()));
     }
 
     @Override
@@ -307,7 +363,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                         row.validationType(), row.passed(), row.score(), deserializeIssues(row.issuesJson()),
                         row.createdAt()))
                 .toList();
-        return new GenerationDetail(log, validations);
+        return new GenerationDetail(log, validations,
+                mapper.findSourcesByGenerationLog(generationLogId));
     }
 
     private List<QuizValidation.Issue> deserializeIssues(String issuesJson) {

@@ -77,6 +77,20 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Report backup success
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" 'bash -s -- DB_BACKUP SUCCESS "Encrypted backup and isolated restore verification succeeded"' \
+            < deploy/report-operation-event.sh
+
+      - name: Record backup failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" 'bash -s -- DB_BACKUP FAILED "Database backup workflow failed; inspect the GitHub Actions run"' \
+            < deploy/report-operation-event.sh
+
       - name: Report backup failure
         if: ${{ failure() }}
         uses: actions/github-script@v8
@@ -84,7 +98,7 @@ jobs:
           script: |
             const title = '[운영 알림] 운영 DB 백업 실패';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = `운영 DB 백업이 실패했습니다.\n\n- 실행: ${runUrl}\n- 시각(UTC): ${new Date().toISOString()}\n\n로그 확인 후 백업과 복원 검증을 다시 실행해 주세요.`;
+            const body = `운영 DB 백업이 실패했습니다.\n\n- 실행: ${runUrl}\n- 시각(UTC): ${new Date().toISOString()}\n\n로그를 확인하고 백업 및 복원 검증을 다시 실행해 주세요.`;
             const { data: issues } = await github.rest.issues.listForRepo({
               ...context.repo,
               state: 'open',

@@ -8,7 +8,9 @@ RUN gradle --no-daemon bootJar
 FROM eclipse-temurin:21-jre
 
 WORKDIR /app
+ARG APP_VERSION=dev
 ENV SPRING_PROFILES_ACTIVE=prod
+ENV APP_VERSION=${APP_VERSION}
 COPY --from=build /workspace/build/libs/*.jar /app/app.jar
 RUN groupadd --system --gid 10001 triread \
     && useradd --system --uid 10001 --gid triread --no-create-home triread

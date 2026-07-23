@@ -2,6 +2,7 @@ package com.triread.api.generation;
 
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.operations.OperationsService;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -20,56 +21,78 @@ public class QuizGenerationScheduler {
     private final QuizGenerationService generationService;
     private final AdminQuizService adminQuizService;
     private final QuizGenerationProperties properties;
+    private final OperationsService operationsService;
     private final Clock clock;
 
     public QuizGenerationScheduler(QuizGenerationService generationService,
                                    AdminQuizService adminQuizService,
                                    QuizGenerationProperties properties,
+                                   OperationsService operationsService,
                                    Clock clock) {
         this.generationService = generationService;
         this.adminQuizService = adminQuizService;
         this.properties = properties;
+        this.operationsService = operationsService;
         this.clock = clock;
     }
 
     @Scheduled(cron = "${app.quiz-generation.cron}", zone = "${app.time-zone}")
     public void replenishInventory() {
         if (!properties.isEnabled()) return;
+        runInventoryJob("PRIMARY");
+    }
 
+    private void runInventoryJob(String trigger) {
+        long eventId = operationsService.startEvent(
+                "QUIZ_SCHEDULER", trigger + " inventory replenishment started");
+        int jobsStarted = 0;
+        int recycled = 0;
+        boolean success = false;
         int inventoryDays = Math.max(1, properties.getInventoryDays());
         int maxJobsPerRun = Math.max(1, properties.getMaxJobsPerRun());
         List<LocalDate> targetDates = upcomingWeekdays(LocalDate.now(clock), inventoryDays);
         int variantsPerDate = Math.max(1, properties.getVariantsPerDate());
-        int jobsStarted = 0;
-
-        for (LocalDate targetDate : targetDates) {
-            int activeCount = adminQuizService.countActiveQuizSets(targetDate);
-            while (activeCount < variantsPerDate) {
-                if (adminQuizService.recycleUnusedPublishedQuiz(targetDate)) {
-                    activeCount++;
-                    continue;
-                }
-                if (jobsStarted >= maxJobsPerRun) return;
-                jobsStarted++;
-                try {
-                    generationService.generate(targetDate);
-                    activeCount++;
-                } catch (RuntimeException exception) {
-                    if (exception instanceof ApiException apiException
-                            && "QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(apiException.getCode())) {
-                        log.info("Daily quiz generation budget reached; stopping inventory replenishment");
+        try {
+            for (LocalDate targetDate : targetDates) {
+                int activeCount = adminQuizService.countActiveQuizSets(targetDate);
+                while (activeCount < variantsPerDate) {
+                    if (adminQuizService.recycleUnusedPublishedQuiz(targetDate)) {
+                        activeCount++;
+                        recycled++;
+                        continue;
+                    }
+                    if (jobsStarted >= maxJobsPerRun) {
+                        success = true;
                         return;
                     }
-                    log.error("Scheduled quiz generation failed for {}", targetDate, exception);
-                    break;
+                    jobsStarted++;
+                    try {
+                        generationService.generate(targetDate);
+                        activeCount++;
+                    } catch (RuntimeException exception) {
+                        if (exception instanceof ApiException apiException
+                                && "QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(apiException.getCode())) {
+                            log.info("Daily quiz generation budget reached; stopping inventory replenishment");
+                            success = true;
+                            return;
+                        }
+                        log.error("Scheduled quiz generation failed for {}", targetDate, exception);
+                        break;
+                    }
                 }
             }
+            success = true;
+        } finally {
+            operationsService.completeEvent(eventId, success,
+                    trigger + " inventory replenishment finished: generated="
+                            + jobsStarted + ", recycled=" + recycled);
         }
     }
 
     @Scheduled(cron = "${app.quiz-generation.recovery-cron}", zone = "${app.time-zone}")
     public void recoverInventory() {
-        replenishInventory();
+        if (!properties.isEnabled()) return;
+        runInventoryJob("RECOVERY");
     }
 
     private List<LocalDate> upcomingWeekdays(LocalDate today, int inventoryDays) {

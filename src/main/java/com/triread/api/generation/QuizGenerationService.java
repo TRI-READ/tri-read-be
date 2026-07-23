@@ -20,7 +20,8 @@ public interface QuizGenerationService {
                             java.time.Instant createdAt) {}
 
     record GenerationDetail(QuizGenerationData.GenerationLogRow log,
-                            List<ValidationResult> validations) {}
+                            List<ValidationResult> validations,
+                            List<QuizGenerationData.ContentSource> sources) {}
 
     record GenerationLogPage(PageResponse<QuizGenerationData.GenerationLogRow> page,
                              long successCount, long failureCount,

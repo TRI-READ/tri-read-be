@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.operations.OperationsService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,6 +31,7 @@ class QuizGenerationSchedulerTest {
 
     @Mock QuizGenerationService generationService;
     @Mock AdminQuizService adminQuizService;
+    @Mock OperationsService operationsService;
     private QuizGenerationProperties properties;
     private QuizGenerationScheduler scheduler;
 
@@ -41,7 +43,7 @@ class QuizGenerationSchedulerTest {
         properties.setInventoryDays(3);
         properties.setMaxJobsPerRun(3);
         scheduler = new QuizGenerationScheduler(
-                generationService, adminQuizService, properties, MONDAY_CLOCK);
+                generationService, adminQuizService, properties, operationsService, MONDAY_CLOCK);
     }
 
     @Test
@@ -122,7 +124,7 @@ class QuizGenerationSchedulerTest {
         Clock saturdayClock = Clock.fixed(
                 Instant.parse("2026-07-18T03:00:00Z"), SEOUL);
         scheduler = new QuizGenerationScheduler(
-                generationService, adminQuizService, properties, saturdayClock);
+                generationService, adminQuizService, properties, operationsService, saturdayClock);
         stubActiveCounts(Map.of());
 
         scheduler.replenishInventory();

@@ -58,6 +58,7 @@ class QuizGenerationServiceImplTest {
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
         properties.setAiValidationEnabled(true);
+        properties.setSourceGroundingEnabled(false);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 new QuizTopicDiversityValidator(), aiGateway, promptTemplateService, properties,
                 apiUsageService, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
@@ -170,7 +171,8 @@ class QuizGenerationServiceImplTest {
                         assertThat(exception.getCode())
                                 .isEqualTo("QUIZ_GENERATION_DAILY_LIMIT_REACHED"));
         verify(mapper, never()).insertLog(any());
-        verify(aiGateway, never()).generate(any(), anyList(), any());
+        verify(aiGateway, never()).generate(
+                any(LocalDate.class), anyList(), any());
     }
 
     @Test

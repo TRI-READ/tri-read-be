@@ -45,6 +45,13 @@ public class QuizService {
                 .findFirst()
                 .orElse(null);
 
+        Set<Long> completedPassageIds = attempts.stream()
+                .map(AttemptSummary::passageId).collect(java.util.stream.Collectors.toSet());
+        List<PassageResponse> visiblePassages = content.passages().stream()
+                .map(passage -> completedPassageIds.contains(passage.passageId())
+                        ? passage.withSources(quizMapper.findSourceReferences(passage.passageId()))
+                        : passage)
+                .toList();
         return new TodayQuizResponse(
                 quizSet.quizSetId(),
                 quizSet.challengeDate(),
@@ -53,7 +60,7 @@ public class QuizService {
                 primaryAttempt,
                 attempts,
                 primaryAttempt != null,
-                content.passages()
+                visiblePassages
         );
     }
 
@@ -171,7 +178,8 @@ public class QuizService {
                 QUESTIONS_PER_PASSAGE,
                 QUESTIONS_PER_PASSAGE - score,
                 completedAt,
-                questionResults
+                questionResults,
+                quizMapper.findSourceReferences(submission.passageId())
         );
     }
 
@@ -278,7 +286,8 @@ public class QuizService {
                     passage.title(),
                     passage.content(),
                     passage.topic(),
-                    passageQuestions
+                    passageQuestions,
+                    List.of()
             ));
         }
 
@@ -385,9 +394,17 @@ public class QuizService {
             String title,
             String content,
             String topic,
-            List<QuestionResponse> questions
+            List<QuestionResponse> questions,
+            List<SourceReference> sources
     ) {
+        PassageResponse withSources(List<SourceReference> references) {
+            return new PassageResponse(passageId, position, title, content, topic,
+                    questions, references == null ? List.of() : List.copyOf(references));
+        }
     }
+
+    public record SourceReference(String title, String publisher, LocalDate publishedOn,
+                                  String sourceUrl) {}
 
     public record QuestionResponse(
             long questionId,
@@ -413,7 +430,8 @@ public class QuizService {
             int totalQuestions,
             int wrongCount,
             Instant completedAt,
-            List<QuestionResult> answers
+            List<QuestionResult> answers,
+            List<SourceReference> sources
     ) {
     }
 

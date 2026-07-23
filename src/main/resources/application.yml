@@ -34,6 +34,7 @@ mybatis:
     map-underscore-to-camel-case: true
 
 app:
+  version: ${APP_VERSION:dev}
   time-zone: Asia/Seoul
   auth:
     bootstrap-admin-login-name: ${TRI_READ_ADMIN_LOGIN:}
@@ -51,6 +52,7 @@ app:
     max-jobs-per-day: ${QUIZ_GENERATION_MAX_JOBS_PER_DAY:3}
     max-api-calls-per-day: ${QUIZ_GENERATION_MAX_API_CALLS_PER_DAY:6}
     ai-validation-enabled: ${QUIZ_AI_VALIDATION_ENABLED:false}
+    source-grounding-enabled: ${QUIZ_SOURCE_GROUNDING_ENABLED:true}
     retry-delay-ms: ${QUIZ_GENERATION_RETRY_DELAY_MS:10000}
     cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     recovery-cron: ${QUIZ_GENERATION_RECOVERY_CRON:0 30 5 * * *}
@@ -59,4 +61,5 @@ app:
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
       generation-model: ${GEMINI_GENERATION_MODEL:gemini-3.1-flash-lite}
       validation-model: ${GEMINI_VALIDATION_MODEL:gemini-3.1-flash-lite}
+      source-model: ${GEMINI_SOURCE_MODEL:gemini-2.5-flash-lite}
       prompt-version: ${QUIZ_PROMPT_VERSION:v2}

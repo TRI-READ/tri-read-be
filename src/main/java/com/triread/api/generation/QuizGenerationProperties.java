@@ -16,6 +16,7 @@ public class QuizGenerationProperties {
     private int maxJobsPerDay = 3;
     private int maxApiCallsPerDay = 6;
     private boolean aiValidationEnabled;
+    private boolean sourceGroundingEnabled = true;
     private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
     private String recoveryCron = "0 30 5 * * *";
@@ -41,6 +42,8 @@ public class QuizGenerationProperties {
     public void setMaxApiCallsPerDay(int maxApiCallsPerDay) { this.maxApiCallsPerDay = maxApiCallsPerDay; }
     public boolean isAiValidationEnabled() { return aiValidationEnabled; }
     public void setAiValidationEnabled(boolean aiValidationEnabled) { this.aiValidationEnabled = aiValidationEnabled; }
+    public boolean isSourceGroundingEnabled() { return sourceGroundingEnabled; }
+    public void setSourceGroundingEnabled(boolean sourceGroundingEnabled) { this.sourceGroundingEnabled = sourceGroundingEnabled; }
     public long getRetryDelayMs() { return retryDelayMs; }
     public void setRetryDelayMs(long retryDelayMs) { this.retryDelayMs = retryDelayMs; }
     public String getCron() { return cron; }
@@ -54,6 +57,7 @@ public class QuizGenerationProperties {
         private String baseUrl = "https://generativelanguage.googleapis.com";
         private String generationModel = "gemini-3.1-flash-lite";
         private String validationModel = "gemini-3.1-flash-lite";
+        private String sourceModel = "gemini-2.5-flash-lite";
         private String promptVersion = "v2";
 
         public String getApiKey() { return apiKey; }
@@ -64,6 +68,8 @@ public class QuizGenerationProperties {
         public void setGenerationModel(String generationModel) { this.generationModel = generationModel; }
         public String getValidationModel() { return validationModel; }
         public void setValidationModel(String validationModel) { this.validationModel = validationModel; }
+        public String getSourceModel() { return sourceModel; }
+        public void setSourceModel(String sourceModel) { this.sourceModel = sourceModel; }
         public String getPromptVersion() { return promptVersion; }
         public void setPromptVersion(String promptVersion) { this.promptVersion = promptVersion; }
     }

@@ -100,6 +100,16 @@
         ORDER BY p.position, q.position
     </select>
 
+    <select id="findSourceReferences"
+            resultType="com.triread.api.quiz.QuizService$SourceReference">
+        SELECT cs.title, cs.publisher, cs.published_on, cs.source_url
+        FROM passage_sources ps
+        JOIN content_sources cs ON cs.id = ps.content_source_id
+        WHERE ps.passage_id = #{passageId}
+          AND cs.verified = TRUE
+        ORDER BY cs.published_on DESC NULLS LAST, cs.id
+    </select>
+
     <insert id="insertAttempt"
             parameterType="com.triread.api.quiz.QuizData$QuizAttemptInsert"
             useGeneratedKeys="true"
