@@ -122,4 +122,94 @@ public final class QuizGenerationData {
     }
 
     public record ApiUsageStats(long totalCount, long successCount, long failureCount) {}
+
+    public record SourceBrief(long sourceBriefId, LocalDate targetDate, String status,
+                              String model, String briefingText, String errorMessage,
+                              List<ContentSource> sources) {
+        public SourceBrief {
+            sources = sources == null ? List.of() : List.copyOf(sources);
+        }
+
+        public boolean grounded() {
+            return "READY".equals(status)
+                    && java.util.stream.IntStream.rangeClosed(1, 3)
+                    .allMatch(position -> sources.stream()
+                            .filter(source -> source.passagePosition() == position && source.verified())
+                            .map(ContentSource::sourceUrl)
+                            .distinct()
+                            .count() >= 2);
+        }
+    }
+
+    public record SourceBriefRow(long sourceBriefId, LocalDate targetDate, String status,
+                                 String model, String briefingText, String errorMessage) {}
+
+    public record ContentSource(long contentSourceId, long sourceBriefId, int passagePosition,
+                                String title, String publisher, LocalDate publishedOn,
+                                String sourceUrl, String summary, Instant retrievedAt,
+                                boolean verified) {}
+
+    public record SourceDiscovery(String briefingText, List<DiscoveredSource> sources) {
+        public SourceDiscovery {
+            sources = sources == null ? List.of() : List.copyOf(sources);
+        }
+    }
+
+    public record DiscoveredSource(int passagePosition, String title, String publisher,
+                                   LocalDate publishedOn, String sourceUrl, String summary) {}
+
+    public static final class SourceBriefInsert {
+        private Long id;
+        private final LocalDate targetDate;
+        private final String status;
+        private final String model;
+        private final String briefingText;
+        private final String errorMessage;
+
+        public SourceBriefInsert(LocalDate targetDate, String status, String model,
+                                 String briefingText, String errorMessage) {
+            this.targetDate = targetDate;
+            this.status = status;
+            this.model = model;
+            this.briefingText = briefingText;
+            this.errorMessage = errorMessage;
+        }
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public LocalDate getTargetDate() { return targetDate; }
+        public String getStatus() { return status; }
+        public String getModel() { return model; }
+        public String getBriefingText() { return briefingText; }
+        public String getErrorMessage() { return errorMessage; }
+    }
+
+    public static final class ContentSourceInsert {
+        private Long id;
+        private final long sourceBriefId;
+        private final int passagePosition;
+        private final String title;
+        private final String publisher;
+        private final LocalDate publishedOn;
+        private final String sourceUrl;
+        private final String summary;
+
+        public ContentSourceInsert(long sourceBriefId, DiscoveredSource source) {
+            this.sourceBriefId = sourceBriefId;
+            this.passagePosition = source.passagePosition();
+            this.title = source.title();
+            this.publisher = source.publisher();
+            this.publishedOn = source.publishedOn();
+            this.sourceUrl = source.sourceUrl();
+            this.summary = source.summary();
+        }
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+        public long getSourceBriefId() { return sourceBriefId; }
+        public int getPassagePosition() { return passagePosition; }
+        public String getTitle() { return title; }
+        public String getPublisher() { return publisher; }
+        public LocalDate getPublishedOn() { return publishedOn; }
+        public String getSourceUrl() { return sourceUrl; }
+        public String getSummary() { return summary; }
+    }
 }

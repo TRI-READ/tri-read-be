@@ -27,7 +27,7 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
 
       - name: Build backend image
-        run: docker build --tag tri-read-be:latest .
+        run: docker build --build-arg APP_VERSION="$DEPLOY_SHA" --tag tri-read-be:latest .
 
       - name: Package backend image
         run: docker save tri-read-be:latest | gzip > /tmp/tri-read-be.tar.gz
@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           scp -i ~/.ssh/oci deploy/compose.yaml deploy/Caddyfile \
-            deploy/backup-db.sh deploy/restore-db.sh \
+            deploy/backup-db.sh deploy/restore-db.sh deploy/report-operation-event.sh \
             "$OCI_USER@$OCI_HOST:~/tri-read/"
           scp -i ~/.ssh/oci /tmp/tri-read-be.tar.gz \
             "$OCI_USER@$OCI_HOST:~/tri-read/tri-read-be.tar.gz"
@@ -71,9 +71,15 @@ jobs:
             rm tri-read-be.tar.gz
             docker image prune -f
             docker compose --env-file .env -f compose.yaml ps
-            chmod 700 backup-db.sh restore-db.sh
+            chmod 700 backup-db.sh restore-db.sh report-operation-event.sh
           '
 
       - name: Smoke test production
         shell: bash
         run: bash deploy/smoke-test.sh
+
+      - name: Record successful deployment
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" \
+            "bash ~/tri-read/report-operation-event.sh APP_DEPLOY SUCCESS '$DEPLOY_SHA deployed and smoke-tested'"

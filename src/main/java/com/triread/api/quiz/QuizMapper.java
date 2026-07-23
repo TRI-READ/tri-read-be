@@ -35,6 +35,8 @@ public interface QuizMapper {
 
     List<QuizData.AnswerKeyRow> findAnswerKeys(long quizSetId);
 
+    List<QuizService.SourceReference> findSourceReferences(long passageId);
+
     int insertAttempt(QuizData.QuizAttemptInsert attempt);
 
     int insertAttemptAnswers(

@@ -41,4 +41,12 @@ public interface QuizGenerationMapper {
     long countApiCallsCreatedBetween(@Param("from") Instant from, @Param("until") Instant until);
     QuizGenerationData.ApiUsageStats getApiUsageStats(@Param("from") Instant from,
                                                        @Param("until") Instant until);
+    QuizGenerationData.SourceBriefRow findSourceBrief(LocalDate targetDate);
+    List<QuizGenerationData.ContentSource> findSourcesByBrief(long sourceBriefId);
+    List<QuizGenerationData.ContentSource> findSourcesByGenerationLog(long generationLogId);
+    List<QuizGenerationData.ContentSource> findSourcesByPassage(long passageId);
+    void insertSourceBrief(QuizGenerationData.SourceBriefInsert brief);
+    void insertContentSource(QuizGenerationData.ContentSourceInsert source);
+    void linkSourcesToQuiz(@Param("quizSetId") long quizSetId,
+                           @Param("sourceBriefId") long sourceBriefId);
 }

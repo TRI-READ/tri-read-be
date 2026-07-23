@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.operations.OperationsMapper">
+    <select id="databaseSizeBytes" resultType="long">
+        SELECT pg_database_size(current_database())
+    </select>
+
+    <select id="aiStats" resultType="com.triread.api.operations.OperationsData$AiStats">
+        SELECT COUNT(*) AS total_count,
+               COUNT(*) FILTER (WHERE status = 'SUCCESS') AS success_count,
+               COUNT(*) FILTER (WHERE status = 'FAILED') AS failure_count,
+               AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) * 1000)
+                   FILTER (WHERE completed_at IS NOT NULL) AS average_latency_ms
+        FROM ai_api_calls
+        WHERE created_at &gt;= #{from} AND created_at &lt; #{until}
+    </select>
+
+    <select id="aiErrors" resultType="com.triread.api.operations.OperationsData$ErrorCount">
+        SELECT COALESCE(error_code, 'UNKNOWN') AS error_code, COUNT(*) AS count
+        FROM ai_api_calls
+        WHERE created_at &gt;= #{from}
+          AND created_at &lt; #{until}
+          AND status = 'FAILED'
+        GROUP BY COALESCE(error_code, 'UNKNOWN')
+        ORDER BY count DESC, error_code
+    </select>
+
+    <select id="qualityStats" resultType="com.triread.api.operations.OperationsData$QualityStats">
+        SELECT COUNT(*) FILTER (WHERE status IN ('READY', 'PUBLISHED', 'FAILED')) AS completed_count,
+               COUNT(*) FILTER (WHERE status = 'PUBLISHED') AS published_count,
+               COUNT(*) FILTER (WHERE status = 'FAILED') AS failed_count,
+               COALESCE(SUM(GREATEST(attempt_count - 1, 0)), 0) AS retry_count,
+               COUNT(*) FILTER (WHERE error_message ILIKE '%DIVERSITY%'
+                                  OR error_message ILIKE '%duplicate%') AS duplicate_rejected_count,
+               AVG(validation_score) FILTER (WHERE validation_score IS NOT NULL)
+                   AS average_validation_score
+        FROM generation_logs
+        WHERE created_at &gt;= #{from}
+    </select>
+
+    <select id="inventory" resultType="com.triread.api.operations.OperationsData$InventoryRow">
+        SELECT days.challenge_date,
+               COUNT(qs.id) FILTER (WHERE qs.status = 'PUBLISHED') AS published_count,
+               #{requiredCount} AS required_count
+        FROM generate_series(#{from}::DATE, #{until}::DATE, INTERVAL '1 day')
+             AS days(challenge_date)
+        LEFT JOIN quiz_sets qs ON qs.challenge_date = days.challenge_date::DATE
+        WHERE EXTRACT(ISODOW FROM days.challenge_date) BETWEEN 1 AND 5
+        GROUP BY days.challenge_date
+        ORDER BY days.challenge_date
+    </select>
+
+    <select id="recentFailures" resultType="com.triread.api.operations.OperationsData$FailureRow">
+        SELECT id AS generation_log_id, target_date, status, error_message, updated_at
+        FROM generation_logs
+        WHERE status = 'FAILED'
+        ORDER BY updated_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="recentAdminActions" resultType="com.triread.api.operations.OperationsData$AuditRow">
+        SELECT aal.id AS audit_log_id, au.login_name AS actor_login_name, aal.action,
+               aal.target_type, aal.target_id, aal.created_at
+        FROM admin_audit_logs aal
+        LEFT JOIN app_users au ON au.id = aal.actor_user_id
+        ORDER BY aal.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="lastEvent" resultType="com.triread.api.operations.OperationsData$OperationEventRow">
+        SELECT id AS operation_event_id, event_type, status, message, started_at, completed_at
+        FROM operation_events
+        WHERE event_type = #{eventType}
+        ORDER BY started_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="countGroundedBriefs" resultType="long">
+        SELECT COUNT(*) FROM source_briefs WHERE status = 'READY'
+    </select>
+
+    <select id="countGroundedSources" resultType="long">
+        SELECT COUNT(*) FROM content_sources WHERE verified = TRUE
+    </select>
+
+    <insert id="insertEvent" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO operation_events (event_type, status, message)
+        VALUES (#{eventType}, #{status}, #{message})
+    </insert>
+
+    <update id="completeEvent">
+        UPDATE operation_events
+        SET status = #{status}, message = #{message}, completed_at = #{completedAt}
+        WHERE id = #{eventId}
+    </update>
+</mapper>
