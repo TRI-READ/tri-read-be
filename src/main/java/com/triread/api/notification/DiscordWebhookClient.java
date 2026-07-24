@@ -8,8 +8,12 @@ import org.springframework.web.client.RestClient;
 public class DiscordWebhookClient {
     private final RestClient restClient;
 
-    public DiscordWebhookClient(RestClient.Builder builder) {
-        this.restClient = builder.build();
+    public DiscordWebhookClient() {
+        this(RestClient.create());
+    }
+
+    DiscordWebhookClient(RestClient restClient) {
+        this.restClient = restClient;
     }
 
     public void send(String webhookUrl, String content) {
