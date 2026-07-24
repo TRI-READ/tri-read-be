@@ -6,6 +6,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
 import com.triread.api.common.PageResponse;
+import com.triread.api.notification.DiscordNotificationService;
 import com.triread.api.prompt.PromptTemplateService;
 import java.time.Clock;
 import java.time.Instant;
@@ -29,6 +30,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private final QuizGenerationProperties properties;
     private final AiApiUsageService apiUsageService;
     private final ObjectMapper objectMapper;
+    private final DiscordNotificationService notificationService;
     private final Clock clock;
 
     public QuizGenerationServiceImpl(QuizGenerationMapper mapper,
@@ -40,6 +42,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                                      QuizGenerationProperties properties,
                                      AiApiUsageService apiUsageService,
                                      ObjectMapper objectMapper,
+                                     DiscordNotificationService notificationService,
                                      Clock clock) {
         this.mapper = mapper;
         this.adminQuizService = adminQuizService;
@@ -50,11 +53,25 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         this.properties = properties;
         this.apiUsageService = apiUsageService;
         this.objectMapper = objectMapper;
+        this.notificationService = notificationService;
         this.clock = clock;
     }
 
     @Override
     public synchronized GenerationResult generate(LocalDate targetDate) {
+        try {
+            return generateInternal(targetDate);
+        } catch (RuntimeException exception) {
+            if (shouldNotifyFailure(exception)) {
+                notificationService.notifyFailure("QUIZ_GENERATION",
+                        "퀴즈 생성 최종 실패",
+                        "대상 날짜: " + targetDate + "\n오류: " + errorSummary(exception));
+            }
+            throw exception;
+        }
+    }
+
+    private GenerationResult generateInternal(LocalDate targetDate) {
         if (targetDate == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TARGET_DATE_REQUIRED", "Target date is required.");
         }
@@ -201,6 +218,23 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
 
         throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUIZ_GENERATION_FAILED",
                 "Quiz generation failed after " + maxAttempts + " attempts. " + latestError);
+    }
+
+    private boolean shouldNotifyFailure(RuntimeException exception) {
+        if (!(exception instanceof ApiException apiException)) return true;
+        return !Set.of(
+                "TARGET_DATE_REQUIRED",
+                "QUIZ_DATE_INVENTORY_FULL",
+                "QUIZ_GENERATION_DAILY_LIMIT_REACHED",
+                "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED"
+        ).contains(apiException.getCode());
+    }
+
+    private String errorSummary(RuntimeException exception) {
+        if (exception instanceof ApiException apiException) {
+            return apiException.getCode() + ": " + apiException.getMessage();
+        }
+        return exception.getClass().getSimpleName() + ": " + exception.getMessage();
     }
 
     private QuizGenerationData.SourceBrief resolveSourceBrief(long logId, LocalDate targetDate) {

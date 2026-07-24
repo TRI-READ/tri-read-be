@@ -47,6 +47,7 @@ public class QuizGenerationScheduler {
                 "QUIZ_SCHEDULER", trigger + " inventory replenishment started");
         int jobsStarted = 0;
         int recycled = 0;
+        int failed = 0;
         boolean success = false;
         int inventoryDays = Math.max(1, properties.getInventoryDays());
         int maxJobsPerRun = Math.max(1, properties.getMaxJobsPerRun());
@@ -62,7 +63,7 @@ public class QuizGenerationScheduler {
                         continue;
                     }
                     if (jobsStarted >= maxJobsPerRun) {
-                        success = true;
+                        success = failed == 0;
                         return;
                     }
                     jobsStarted++;
@@ -77,15 +78,16 @@ public class QuizGenerationScheduler {
                             return;
                         }
                         log.error("Scheduled quiz generation failed for {}", targetDate, exception);
+                        failed++;
                         break;
                     }
                 }
             }
-            success = true;
+            success = failed == 0;
         } finally {
             operationsService.completeEvent(eventId, success,
                     trigger + " inventory replenishment finished: generated="
-                            + jobsStarted + ", recycled=" + recycled);
+                            + jobsStarted + ", recycled=" + recycled + ", failed=" + failed);
         }
     }
 

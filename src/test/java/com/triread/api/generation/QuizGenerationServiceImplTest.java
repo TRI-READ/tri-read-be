@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
+import com.triread.api.notification.DiscordNotificationService;
 import com.triread.api.prompt.PromptTemplateService;
 import java.time.Clock;
 import java.time.Instant;
@@ -47,6 +48,7 @@ class QuizGenerationServiceImplTest {
     @Mock QuizAiGateway aiGateway;
     @Mock PromptTemplateService promptTemplateService;
     @Mock AiApiUsageService apiUsageService;
+    @Mock DiscordNotificationService notificationService;
     private QuizGenerationProperties properties;
     private QuizGenerationServiceImpl service;
 
@@ -61,7 +63,8 @@ class QuizGenerationServiceImplTest {
         properties.setSourceGroundingEnabled(false);
         service = new QuizGenerationServiceImpl(mapper, adminQuizService, ruleValidator,
                 new QuizTopicDiversityValidator(), aiGateway, promptTemplateService, properties,
-                apiUsageService, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
+                apiUsageService, new ObjectMapper(), notificationService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(aiGateway.generationModel()).thenReturn("generation-model");
         lenient().when(aiGateway.provider()).thenReturn("GEMINI");
         lenient().when(promptTemplateService.getActivePrompts()).thenReturn(ACTIVE_PROMPTS);

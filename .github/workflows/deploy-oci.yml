@@ -83,3 +83,11 @@ jobs:
         run: |
           ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" \
             "bash ~/tri-read/report-operation-event.sh APP_DEPLOY SUCCESS '$DEPLOY_SHA deployed and smoke-tested'"
+
+      - name: Notify Discord on deployment failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: bash deploy/notify-discord.sh FAILED "백엔드 배포 실패" "OCI 배포 또는 배포 후 스모크 테스트가 실패했습니다."
