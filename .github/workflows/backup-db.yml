@@ -91,6 +91,14 @@ jobs:
           ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" 'bash -s -- DB_BACKUP FAILED "Database backup workflow failed; inspect the GitHub Actions run"' \
             < deploy/report-operation-event.sh
 
+      - name: Notify Discord on backup failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: bash deploy/notify-discord.sh FAILED "운영 DB 백업 실패" "암호화 백업 또는 격리 복원 검증이 실패했습니다."
+
       - name: Report backup failure
         if: ${{ failure() }}
         uses: actions/github-script@v8

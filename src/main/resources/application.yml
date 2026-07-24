@@ -36,6 +36,12 @@ mybatis:
 app:
   version: ${APP_VERSION:dev}
   time-zone: Asia/Seoul
+  notifications:
+    discord:
+      enabled: ${DISCORD_NOTIFICATIONS_ENABLED:false}
+      webhook-url: ${DISCORD_WEBHOOK_URL:}
+      cooldown: ${DISCORD_NOTIFICATION_COOLDOWN:15m}
+      environment: ${APP_ENVIRONMENT:local}
   auth:
     bootstrap-admin-login-name: ${TRI_READ_ADMIN_LOGIN:}
     login-rate-limit:
