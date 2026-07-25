@@ -15,7 +15,8 @@ public class QuizTopicDiversityValidator {
             "\uAC1C\uB150", "\uACFC\uC815", "\uAD00\uACC4", "\uAD6C\uC131", "\uAD6C\uC870",
             "\uBB38\uC81C", "\uBCC0\uD654", "\uBD84\uC11D", "\uC0AC\uD68C", "\uC5ED\uD560",
             "\uC601\uD5A5", "\uC6D0\uB9AC", "\uC758\uBBF8", "\uC774\uB860", "\uC774\uD574",
-            "\uC815\uBCF4", "\uC804\uD658", "\uD604\uB300", "\uD604\uC0C1"
+            "\uC815\uBCF4", "\uC804\uD658", "\uD604\uB300", "\uD604\uC0C1",
+            "\uC9C0\uBB38", "\uC8FC\uC81C", "passage", "topic"
     );
     private static final List<String> PARTICLES = List.of(
             "\uC73C\uB85C", "\uC5D0\uC11C", "\uC5D0\uAC8C", "\uAE4C\uC9C0",
@@ -46,18 +47,20 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreateQuiz quiz,
             List<QuizGenerationData.RecentPassageRow> recentPassages
     ) {
-        if (quiz == null || quiz.passages() == null || recentPassages == null
-                || recentPassages.isEmpty()) {
+        if (quiz == null || quiz.passages() == null) {
             return new QuizValidation.Result(true, 100, List.of());
         }
 
         Set<Integer> duplicatedPositions = new HashSet<>();
         List<QuizValidation.Issue> issues = new java.util.ArrayList<>();
+        validateGeneratedPassages(quiz.passages(), duplicatedPositions, issues);
+        if (recentPassages == null || recentPassages.isEmpty()) {
+            return result(issues);
+        }
         for (int index = 0; index < quiz.passages().size(); index++) {
             int position = index + 1;
             AdminQuizService.CreatePassage passage = quiz.passages().get(index);
             recentPassages.stream()
-                    .filter(recent -> recent.position() == position)
                     .filter(recent -> overlapsRecentPassage(passage, recent))
                     .findFirst()
                     .ifPresent(recent -> {
@@ -66,11 +69,56 @@ public class QuizTopicDiversityValidator {
                                     "ERROR", "RECENT_TOPIC_OVERLAP", position, null,
                                     "Generated passage '" + passage.title() + "' (" + passage.topic()
                                             + ") overlaps recent passage '" + recent.title()
-                                            + "' (" + recent.topic() + ")."
+                                            + "' (" + recent.topic() + ") from area "
+                                            + recent.position() + "."
                             ));
                         }
                     });
         }
+        return result(issues);
+    }
+
+    private void validateGeneratedPassages(
+            List<AdminQuizService.CreatePassage> passages,
+            Set<Integer> duplicatedPositions,
+            List<QuizValidation.Issue> issues
+    ) {
+        for (int rightIndex = 1; rightIndex < passages.size(); rightIndex++) {
+            AdminQuizService.CreatePassage right = passages.get(rightIndex);
+            for (int leftIndex = 0; leftIndex < rightIndex; leftIndex++) {
+                AdminQuizService.CreatePassage left = passages.get(leftIndex);
+                if (!overlapsGeneratedPassage(left, right)) continue;
+
+                int position = rightIndex + 1;
+                if (duplicatedPositions.add(position)) {
+                    issues.add(new QuizValidation.Issue(
+                            "ERROR", "INTRA_QUIZ_TOPIC_OVERLAP", position, null,
+                            "Generated passage '" + right.title() + "' (" + right.topic()
+                                    + ") overlaps passage " + (leftIndex + 1) + " '" + left.title()
+                                    + "' (" + left.topic() + ")."
+                    ));
+                }
+                break;
+            }
+        }
+    }
+
+    private boolean overlapsGeneratedPassage(
+            AdminQuizService.CreatePassage left,
+            AdminQuizService.CreatePassage right
+    ) {
+        if (contentSimilarity(left.content(), right.content()) >= 0.68) return true;
+        if (similarTitle(left.title(), right.title())) return true;
+
+        boolean leftTopicSpecific = isSpecificTopic(left.topic());
+        boolean rightTopicSpecific = isSpecificTopic(right.topic());
+        if (leftTopicSpecific && rightTopicSpecific
+                && similarTitle(left.topic(), right.topic())) return true;
+        if (leftTopicSpecific && similarTitle(left.topic(), right.title())) return true;
+        return rightTopicSpecific && similarTitle(left.title(), right.topic());
+    }
+
+    private QuizValidation.Result result(List<QuizValidation.Issue> issues) {
         int score = Math.max(0, 100 - issues.size() * 30);
         return new QuizValidation.Result(issues.isEmpty(), score, issues);
     }
@@ -143,8 +191,7 @@ public class QuizTopicDiversityValidator {
         if (leftTerms.isEmpty() || rightTerms.isEmpty()) return false;
         Set<String> common = new HashSet<>(leftTerms);
         common.retainAll(rightTerms);
-        int smallerSize = Math.min(leftTerms.size(), rightTerms.size());
-        return common.size() >= 2 || common.size() * 4 >= smallerSize * 3;
+        return common.size() >= 2;
     }
 
     private Set<String> terms(String value) {
@@ -152,6 +199,7 @@ public class QuizTopicDiversityValidator {
                 .map(this::stripParticle)
                 .filter(term -> term.length() >= 2)
                 .filter(term -> !GENERIC_TERMS.contains(term))
+                .filter(term -> !term.chars().allMatch(Character::isDigit))
                 .collect(Collectors.toSet());
     }
 

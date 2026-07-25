@@ -91,9 +91,11 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId(), "GENERATING");
         mapper.insertLog(log);
         long logId = log.getId();
+        List<QuizGenerationData.RecentPassageRow> excludedPassages = new ArrayList<>(
+                mapper.findRecentPassages(targetDate, targetDate.minusDays(7)));
         QuizGenerationData.SourceBrief sourceBrief;
         try {
-            sourceBrief = resolveSourceBrief(logId, targetDate);
+            sourceBrief = resolveSourceBrief(logId, targetDate, excludedPassages);
         } catch (RuntimeException exception) {
             String error = exception instanceof ApiException apiException
                     ? apiException.getCode() + ": " + apiException.getMessage()
@@ -102,8 +104,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             throw exception;
         }
         int maxAttempts = Math.max(1, properties.getMaxAttempts());
-        List<QuizGenerationData.RecentPassageRow> excludedPassages = new ArrayList<>(
-                mapper.findRecentPassages(targetDate, targetDate.minusDays(7)));
         String latestRaw = null;
         String latestError = null;
         QuizGenerationData.GeneratedQuiz candidate = null;
@@ -237,7 +237,11 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         return exception.getClass().getSimpleName() + ": " + exception.getMessage();
     }
 
-    private QuizGenerationData.SourceBrief resolveSourceBrief(long logId, LocalDate targetDate) {
+    private QuizGenerationData.SourceBrief resolveSourceBrief(
+            long logId,
+            LocalDate targetDate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
         QuizGenerationData.SourceBriefRow existing = mapper.findSourceBrief(targetDate);
         if (existing != null && "READY".equals(existing.status())) {
             return toSourceBrief(existing);
@@ -249,7 +253,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         try {
             QuizGenerationData.SourceDiscovery discovery = callAi(
                     logId, "SOURCE_DISCOVERY", aiGateway.sourceModel(),
-                    () -> aiGateway.discoverSources(targetDate));
+                    () -> aiGateway.discoverSources(targetDate, recentPassages));
             QuizGenerationData.SourceBriefInsert insert = new QuizGenerationData.SourceBriefInsert(
                     targetDate, "READY", aiGateway.sourceModel(), discovery.briefingText(), null);
             mapper.insertSourceBrief(insert);

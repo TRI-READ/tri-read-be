@@ -4,7 +4,10 @@ import com.triread.api.prompt.PromptTemplateService;
 import java.util.List;
 
 public interface QuizAiGateway extends QuizContentGenerator {
-    QuizGenerationData.SourceDiscovery discoverSources(java.time.LocalDate targetDate);
+    QuizGenerationData.SourceDiscovery discoverSources(
+            java.time.LocalDate targetDate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    );
 
     QuizGenerationData.GeneratedQuiz generate(QuizGenerationData.SourceBrief sourceBrief,
                                                List<QuizGenerationData.RecentPassageRow> recentPassages,

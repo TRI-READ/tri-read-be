@@ -72,12 +72,48 @@ class RuleBasedQuizValidatorTest {
                 .contains("DUPLICATE_OPTION", "EVIDENCE_NOT_IN_PASSAGE");
     }
 
+    @Test
+    void warnsWhenOnlyTheCorrectAnswerIsConspicuouslyLong() {
+        AdminQuizService.CreateQuiz valid = validQuiz();
+        AdminQuizService.CreatePassage first = valid.passages().getFirst();
+        AdminQuizService.CreateQuestion original = first.questions().getFirst();
+        AdminQuizService.CreateQuestion biased = new AdminQuizService.CreateQuestion(
+                original.content(),
+                List.of(
+                        "The passage explains a detailed relationship between institutional constraints "
+                                + "and the resulting change in individual behavior.",
+                        "A short distractor",
+                        "Another distractor",
+                        "The last distractor"),
+                1, original.explanation(), original.evidence());
+        List<AdminQuizService.CreateQuestion> questions = new ArrayList<>(first.questions());
+        questions.set(0, biased);
+        List<AdminQuizService.CreatePassage> passages = new ArrayList<>(valid.passages());
+        passages.set(0, new AdminQuizService.CreatePassage(
+                first.title(), first.topic(), first.content(), questions));
+
+        QuizValidation.Result result = validator.validate(
+                new AdminQuizService.CreateQuiz(valid.challengeDate(), passages));
+
+        assertThat(result.passed()).isTrue();
+        assertThat(result.score()).isEqualTo(95);
+        assertThat(result.issues()).singleElement().satisfies(issue -> {
+            assertThat(issue.severity()).isEqualTo("WARNING");
+            assertThat(issue.code()).isEqualTo("ANSWER_LENGTH_BIAS");
+        });
+    }
+
     static AdminQuizService.CreateQuiz validQuiz() {
         List<AdminQuizService.CreatePassage> passages = new ArrayList<>();
+        List<String> bodies = List.of(
+                "Urban transport networks reshape pedestrian routes by changing access and travel costs. ",
+                "Legal institutions alter market behavior through incentives, duties, and enforcement. ",
+                "Biological cells regulate energy use through membranes, enzymes, and feedback signals. "
+        );
         int answerPosition = 1;
         for (int passage = 1; passage <= 3; passage++) {
-            String evidence = "이 문장은 정답을 판단하는 핵심 근거이다.";
-            String content = evidence + " " + ("고등학생용 비문학 지문의 논리적 내용을 설명한다. ").repeat(40);
+            String evidence = "This is the decisive evidence for passage " + passage + ".";
+            String content = evidence + " " + bodies.get(passage - 1).repeat(40);
             List<AdminQuizService.CreateQuestion> questions = new ArrayList<>();
             for (int question = 1; question <= 3; question++) {
                 questions.add(new AdminQuizService.CreateQuestion(

@@ -56,6 +56,47 @@ class QuizTopicDiversityValidatorTest {
     }
 
     @Test
+    void rejectsARecentTopicEvenWhenItsPreviousAreaWasDifferent() {
+        AdminQuizService.CreateQuiz quiz = quizWithFirstPassage(
+                "Carbon pricing changes global trade",
+                "Carbon border adjustment and import regulation");
+        List<QuizGenerationData.RecentPassageRow> recent = List.of(
+                new QuizGenerationData.RecentPassageRow(
+                        LocalDate.of(2026, 7, 15), 3,
+                        "How carbon border adjustments affect imports",
+                        "Carbon border adjustment and trade policy", ""));
+
+        QuizValidation.Result result = validator.validate(quiz, recent);
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.issues()).singleElement().satisfies(issue ->
+                assertThat(issue.code()).isEqualTo("RECENT_TOPIC_OVERLAP"));
+    }
+
+    @Test
+    void rejectsOverlappingSubjectsInsideOneGeneratedQuiz() {
+        AdminQuizService.CreateQuiz valid = RuleBasedQuizValidatorTest.validQuiz();
+        List<AdminQuizService.CreatePassage> passages = new java.util.ArrayList<>(valid.passages());
+        AdminQuizService.CreatePassage first = passages.get(0);
+        AdminQuizService.CreatePassage second = passages.get(1);
+        passages.set(0, new AdminQuizService.CreatePassage(
+                "Carbon pricing changes global trade",
+                "Carbon border adjustment and import regulation",
+                first.content(), first.questions()));
+        passages.set(1, new AdminQuizService.CreatePassage(
+                "How carbon border adjustments affect imports",
+                "Carbon border adjustment and trade policy",
+                second.content(), second.questions()));
+
+        QuizValidation.Result result = validator.validate(
+                new AdminQuizService.CreateQuiz(valid.challengeDate(), passages), List.of());
+
+        assertThat(result.passed()).isFalse();
+        assertThat(result.issues()).singleElement().satisfies(issue ->
+                assertThat(issue.code()).isEqualTo("INTRA_QUIZ_TOPIC_OVERLAP"));
+    }
+
+    @Test
     void ignoresBroadAreaLabelsWhenSpecificSubjectsDiffer() {
         AdminQuizService.CreateQuiz quiz = quizWithFirstPassage(
                 "How urban architecture changes pedestrian behavior", "Humanities");
