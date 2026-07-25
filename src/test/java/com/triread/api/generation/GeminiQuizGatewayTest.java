@@ -74,6 +74,24 @@ class GeminiQuizGatewayTest {
     }
 
     @Test
+    void includesRecentSubjectsBeforeSourceDiscovery() {
+        GeminiQuizGateway gateway = gateway();
+
+        String input = gateway.sourceDiscoveryInput(LocalDate.of(2026, 7, 16), List.of(
+                new QuizGenerationData.RecentPassageRow(
+                        LocalDate.of(2026, 7, 15), 3,
+                        "Carbon border adjustment and trade",
+                        "Carbon pricing and import regulation", "")));
+
+        assertThat(input)
+                .contains("must not share the")
+                .contains("same core entity")
+                .contains("Carbon border adjustment and trade")
+                .contains("Carbon pricing and import regulation")
+                .contains("area 3");
+    }
+
+    @Test
     void selectsOnlyPassagesNamedByValidationIssuesForRepair() {
         GeminiQuizGateway gateway = gateway();
 

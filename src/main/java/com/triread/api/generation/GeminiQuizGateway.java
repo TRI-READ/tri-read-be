@@ -95,20 +95,12 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     @Override
-    public QuizGenerationData.SourceDiscovery discoverSources(LocalDate targetDate) {
+    public QuizGenerationData.SourceDiscovery discoverSources(
+            LocalDate targetDate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
         requireApiKey();
-        String input = """
-                Find recent, factual news or public-institution material suitable for three
-                independent Korean high-school nonfiction passages. Use a different domain for
-                each area: science/technology, society/economy, and humanities/culture.
-                Prefer reporting and primary institutions over blogs. For each area, synthesize
-                facts supported by at least two independent sources. Do not copy article prose.
-                Return plain text with exactly these markers:
-                [AREA1] science/technology briefing
-                [AREA2] society/economy briefing
-                [AREA3] humanities/culture briefing
-                Target quiz date: %s
-                """.formatted(targetDate);
+        String input = sourceDiscoveryInput(targetDate, recentPassages);
         Map<String, Object> request = Map.of(
                 "contents", List.of(Map.of("role", "user",
                         "parts", List.of(Map.of("text", input)))),
@@ -131,6 +123,40 @@ public class GeminiQuizGateway implements QuizAiGateway {
             throw gatewayError("GEMINI_SOURCE_REQUEST_FAILED",
                     "Gemini source discovery failed.", exception);
         }
+    }
+
+    String sourceDiscoveryInput(
+            LocalDate targetDate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
+        StringBuilder input = new StringBuilder("""
+                Find recent, factual news or public-institution material suitable for three
+                independent Korean high-school nonfiction passages. Use a different domain for
+                each area: science/technology, society/economy, and humanities/culture.
+                Prefer reporting and primary institutions over blogs. For each area, synthesize
+                facts supported by at least two independent sources. Do not copy article prose.
+                Select a concrete subject for each area. The three subjects must not share the
+                same core entity, technology, event, policy, or social controversy.
+                Return plain text with exactly these markers:
+                [AREA1] science/technology briefing
+                [AREA2] society/economy briefing
+                [AREA3] humanities/culture briefing
+                """).append("Target quiz date: ").append(targetDate).append('\n');
+        if (recentPassages == null || recentPassages.isEmpty()) {
+            return input.append("There are no recent subjects to exclude.").toString();
+        }
+        input.append("""
+                Do not select or reframe any recent subject listed below. A different headline
+                or news angle does not make the same core subject reusable.
+                Recent subjects to exclude:
+                """);
+        recentPassages.forEach(passage -> input
+                .append("- area ").append(passage.position())
+                .append(", ").append(passage.challengeDate())
+                .append(": title=").append(display(passage.title()))
+                .append(", topic=").append(display(passage.topic()))
+                .append('\n'));
+        return input.toString();
     }
 
     QuizGenerationData.SourceDiscovery parseGroundedSources(JsonNode response) {

@@ -117,6 +117,7 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
                             "Options within a question must be unique."));
                 }
             }
+            validateAnswerLengthBias(question, passagePosition, questionPosition, issues);
         }
         if (question.correctOptionPosition() < 1 || question.correctOptionPosition() > 4) {
             issues.add(error("INVALID_CORRECT_POSITION", passagePosition, questionPosition,
@@ -133,6 +134,29 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
                 .contains(normalizeWhitespace(question.evidence()))) {
             issues.add(error("EVIDENCE_NOT_IN_PASSAGE", passagePosition, questionPosition,
                     "Evidence must be an exact excerpt from the passage."));
+        }
+    }
+
+    private void validateAnswerLengthBias(
+            AdminQuizService.CreateQuestion question,
+            int passagePosition,
+            int questionPosition,
+            List<QuizValidation.Issue> issues
+    ) {
+        int correctIndex = question.correctOptionPosition() - 1;
+        if (correctIndex < 0 || correctIndex >= question.options().size()) return;
+
+        int correctLength = question.options().get(correctIndex).trim().length();
+        double distractorAverage = java.util.stream.IntStream.range(0, question.options().size())
+                .filter(index -> index != correctIndex)
+                .map(index -> question.options().get(index).trim().length())
+                .average()
+                .orElse(0);
+        if (correctLength >= 45
+                && correctLength - distractorAverage >= 20
+                && correctLength >= distractorAverage * 1.75) {
+            issues.add(warning("ANSWER_LENGTH_BIAS", passagePosition, questionPosition,
+                    "The correct option is conspicuously longer than the distractors."));
         }
     }
 
