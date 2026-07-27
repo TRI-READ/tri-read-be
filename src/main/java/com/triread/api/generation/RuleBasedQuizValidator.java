@@ -21,12 +21,16 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
                     "Generated quiz is missing.")));
         }
         List<QuizValidation.Issue> issues = new ArrayList<>(validate(generated.toCreateQuiz()).issues());
-        if (generated.passages().size() != 3) return result(issues);
+        if (generated.passages().size() != 3) {
+            return result(issues);
+        }
 
         for (int passageIndex = 0; passageIndex < generated.passages().size(); passageIndex++) {
             QuizGenerationData.GeneratedPassage passage = generated.passages().get(passageIndex);
             int passagePosition = passageIndex + 1;
-            if (passage == null || passage.questions().size() != 3) continue;
+            if (passage == null || passage.questions().size() != 3) {
+                continue;
+            }
             Set<String> types = new HashSet<>();
             for (int questionIndex = 0; questionIndex < passage.questions().size(); questionIndex++) {
                 QuizGenerationData.GeneratedQuestion question = passage.questions().get(questionIndex);
@@ -55,7 +59,9 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
             int passagePosition = passageIndex + 1;
             AdminQuizService.CreatePassage passage = quiz.passages().get(passageIndex);
             validatePassage(passage, passagePosition, issues);
-            if (passage.questions() == null || passage.questions().size() != 3) continue;
+            if (passage.questions() == null || passage.questions().size() != 3) {
+                continue;
+            }
 
             for (int questionIndex = 0; questionIndex < passage.questions().size(); questionIndex++) {
                 int questionPosition = questionIndex + 1;
@@ -72,8 +78,16 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
             }
         }
 
-        long usedPositions = java.util.Arrays.stream(correctPositions).filter(count -> count > 0).count();
-        int maxSamePosition = java.util.Arrays.stream(correctPositions).max().orElse(0);
+        int usedPositions = 0;
+        int maxSamePosition = 0;
+        for (int count : correctPositions) {
+            if (count > 0) {
+                usedPositions++;
+            }
+            if (count > maxSamePosition) {
+                maxSamePosition = count;
+            }
+        }
         if (usedPositions < 3 || maxSamePosition > 4) {
             issues.add(warning("UNBALANCED_ANSWER_POSITIONS", null, null,
                     "Correct answer positions should use at least 3 positions and repeat no position more than 4 times."));
@@ -83,9 +97,16 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
 
     private void validatePassage(AdminQuizService.CreatePassage passage, int position,
                                  List<QuizValidation.Issue> issues) {
-        if (blank(passage.title())) issues.add(warning("MISSING_TITLE", position, null, "Passage title is missing."));
-        if (blank(passage.topic())) issues.add(error("MISSING_TOPIC", position, null, "Passage topic is missing."));
-        int contentLength = passage.content() == null ? 0 : passage.content().trim().length();
+        if (blank(passage.title())) {
+            issues.add(warning("MISSING_TITLE", position, null, "Passage title is missing."));
+        }
+        if (blank(passage.topic())) {
+            issues.add(error("MISSING_TOPIC", position, null, "Passage topic is missing."));
+        }
+        int contentLength = 0;
+        if (passage.content() != null) {
+            contentLength = passage.content().trim().length();
+        }
         if (contentLength < PASSAGE_MIN_LENGTH || contentLength > PASSAGE_MAX_LENGTH) {
             issues.add(error("INVALID_PASSAGE_LENGTH", position, null,
                     "Passage length must be between " + PASSAGE_MIN_LENGTH + " and " + PASSAGE_MAX_LENGTH + " characters."));
@@ -144,14 +165,24 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
             List<QuizValidation.Issue> issues
     ) {
         int correctIndex = question.correctOptionPosition() - 1;
-        if (correctIndex < 0 || correctIndex >= question.options().size()) return;
+        if (correctIndex < 0 || correctIndex >= question.options().size()) {
+            return;
+        }
 
         int correctLength = question.options().get(correctIndex).trim().length();
-        double distractorAverage = java.util.stream.IntStream.range(0, question.options().size())
-                .filter(index -> index != correctIndex)
-                .map(index -> question.options().get(index).trim().length())
-                .average()
-                .orElse(0);
+        int distractorLengthSum = 0;
+        int distractorCount = 0;
+        for (int index = 0; index < question.options().size(); index++) {
+            if (index == correctIndex) {
+                continue;
+            }
+            distractorLengthSum += question.options().get(index).trim().length();
+            distractorCount++;
+        }
+        double distractorAverage = 0;
+        if (distractorCount > 0) {
+            distractorAverage = (double) distractorLengthSum / distractorCount;
+        }
         if (correctLength >= 45
                 && correctLength - distractorAverage >= 20
                 && correctLength >= distractorAverage * 1.75) {
@@ -169,7 +200,10 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
                     "Generated question metadata is missing."));
             return;
         }
-        String type = question.questionType() == null ? "" : question.questionType().trim();
+        String type = "";
+        if (question.questionType() != null) {
+            type = question.questionType().trim();
+        }
         if (!QUESTION_TYPES.contains(type)) {
             issues.add(error("INVALID_QUESTION_TYPE", passagePosition, questionPosition,
                     "Question type must be one of the supported values."));
@@ -191,7 +225,12 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
     }
 
     private QuizValidation.Result result(List<QuizValidation.Issue> issues) {
-        int errors = (int) issues.stream().filter(issue -> "ERROR".equals(issue.severity())).count();
+        int errors = 0;
+        for (QuizValidation.Issue issue : issues) {
+            if ("ERROR".equals(issue.severity())) {
+                errors++;
+            }
+        }
         int warnings = issues.size() - errors;
         int score = Math.max(0, 100 - errors * 15 - warnings * 5);
         return new QuizValidation.Result(errors == 0, score, issues);
@@ -203,11 +242,21 @@ public class RuleBasedQuizValidator implements QuizContentValidator {
     private QuizValidation.Issue warning(String code, Integer passage, Integer question, String message) {
         return new QuizValidation.Issue("WARNING", code, passage, question, message);
     }
-    private boolean blank(String value) { return value == null || value.isBlank(); }
-    private String normalize(String value) {
-        return value == null ? "" : normalizeWhitespace(value).toLowerCase(Locale.ROOT);
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
     }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+        return normalizeWhitespace(value).toLowerCase(Locale.ROOT);
+    }
+
     private String normalizeWhitespace(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ");
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", " ");
     }
 }

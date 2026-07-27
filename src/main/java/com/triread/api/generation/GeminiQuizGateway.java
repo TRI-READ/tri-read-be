@@ -5,6 +5,7 @@ import com.triread.api.prompt.PromptTemplateService;
 import java.time.LocalDate;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -116,8 +117,10 @@ public class GeminiQuizGateway implements QuizAiGateway {
                     .body(JsonNode.class);
             return parseGroundedSources(response);
         } catch (RestClientResponseException exception) {
-            String code = exception.getStatusCode().value() == 429
-                    ? "GEMINI_RATE_LIMITED" : "GEMINI_SOURCE_REQUEST_FAILED";
+            String code = "GEMINI_SOURCE_REQUEST_FAILED";
+            if (exception.getStatusCode().value() == 429) {
+                code = "GEMINI_RATE_LIMITED";
+            }
             throw gatewayError(code, "Gemini source discovery failed.", exception);
         } catch (RestClientException exception) {
             throw gatewayError("GEMINI_SOURCE_REQUEST_FAILED",
@@ -150,25 +153,25 @@ public class GeminiQuizGateway implements QuizAiGateway {
                 or news angle does not make the same core subject reusable.
                 Recent subjects to exclude:
                 """);
-        recentPassages.forEach(passage -> input
-                .append("- area ").append(passage.position())
-                .append(", ").append(passage.challengeDate())
-                .append(": title=").append(display(passage.title()))
-                .append(", topic=").append(display(passage.topic()))
-                .append('\n'));
+        appendRecentPassages(input, recentPassages);
         return input.toString();
     }
 
     QuizGenerationData.SourceDiscovery parseGroundedSources(JsonNode response) {
-        JsonNode candidate = response == null ? null : response.path("candidates").path(0);
+        JsonNode candidate = null;
+        if (response != null) {
+            candidate = response.path("candidates").path(0);
+        }
         if (candidate == null || candidate.isMissingNode()) {
             throw gatewayError("GEMINI_SOURCE_RESPONSE_EMPTY",
                     "Gemini returned no grounded source briefing.", null);
         }
         StringBuilder briefing = new StringBuilder();
-        candidate.path("content").path("parts").forEach(part -> {
-            if (part.hasNonNull("text")) briefing.append(part.get("text").asText());
-        });
+        for (JsonNode part : candidate.path("content").path("parts")) {
+            if (part.hasNonNull("text")) {
+                briefing.append(part.get("text").asText());
+            }
+        }
         String text = briefing.toString();
         int area2 = text.indexOf("[AREA2]");
         int area3 = text.indexOf("[AREA3]");
@@ -182,12 +185,14 @@ public class GeminiQuizGateway implements QuizAiGateway {
         Map<String, QuizGenerationData.DiscoveredSource> unique = new LinkedHashMap<>();
         for (JsonNode support : metadata.path("groundingSupports")) {
             int endIndex = support.path("segment").path("endIndex").asInt(0);
-            int position = endIndex <= area2 ? 1 : endIndex <= area3 ? 2 : 3;
+            int position = findPassagePosition(endIndex, area2, area3);
             for (JsonNode index : support.path("groundingChunkIndices")) {
                 JsonNode web = chunks.path(index.asInt()).path("web");
                 String url = web.path("uri").asText("");
                 String title = web.path("title").asText("");
-                if (url.isBlank() || title.isBlank()) continue;
+                if (url.isBlank() || title.isBlank()) {
+                    continue;
+                }
                 String key = position + "|" + url;
                 unique.putIfAbsent(key, new QuizGenerationData.DiscoveredSource(
                         position, title, publisher(url), null, url,
@@ -195,16 +200,36 @@ public class GeminiQuizGateway implements QuizAiGateway {
             }
         }
         List<QuizGenerationData.DiscoveredSource> sources = new ArrayList<>(unique.values());
-        boolean complete = java.util.stream.IntStream.rangeClosed(1, 3)
-                .allMatch(position -> sources.stream()
-                        .filter(source -> source.passagePosition() == position)
-                        .map(QuizGenerationData.DiscoveredSource::sourceUrl)
-                        .distinct().count() >= 2);
-        if (!complete) {
+        if (!hasEnoughSources(sources)) {
             throw gatewayError("GEMINI_SOURCE_GROUNDING_INSUFFICIENT",
                     "Each passage area requires at least two grounded sources.", null);
         }
         return new QuizGenerationData.SourceDiscovery(text, sources);
+    }
+
+    private int findPassagePosition(int endIndex, int area2, int area3) {
+        if (endIndex <= area2) {
+            return 1;
+        }
+        if (endIndex <= area3) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private boolean hasEnoughSources(List<QuizGenerationData.DiscoveredSource> sources) {
+        for (int position = 1; position <= 3; position++) {
+            Set<String> urls = new HashSet<>();
+            for (QuizGenerationData.DiscoveredSource source : sources) {
+                if (source.passagePosition() == position) {
+                    urls.add(source.sourceUrl());
+                }
+            }
+            if (urls.size() < 2) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String publisher(String rawUrl) {
@@ -216,16 +241,18 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     private String areaSummary(String text, int position, int area2, int area3) {
-        int start = switch (position) {
-            case 1 -> text.indexOf("[AREA1]") + 7;
-            case 2 -> area2 + 7;
-            default -> area3 + 7;
-        };
-        int end = switch (position) {
-            case 1 -> area2;
-            case 2 -> area3;
-            default -> text.length();
-        };
+        int start;
+        int end;
+        if (position == 1) {
+            start = text.indexOf("[AREA1]") + 7;
+            end = area2;
+        } else if (position == 2) {
+            start = area2 + 7;
+            end = area3;
+        } else {
+            start = area3 + 7;
+            end = text.length();
+        }
         return text.substring(Math.max(0, start), Math.max(start, end)).trim();
     }
 
@@ -242,9 +269,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
                 - Do not print URLs or citations inside the passage.
                 Verified source briefing:
                 """).append(sourceBrief.briefingText()).append("\nVerified references:\n");
-        sourceBrief.sources().forEach(source -> value.append("- AREA")
-                .append(source.passagePosition()).append(": ")
-                .append(source.title()).append(" | ").append(source.sourceUrl()).append('\n'));
+        for (QuizGenerationData.ContentSource source : sourceBrief.sources()) {
+            value.append("- AREA")
+                    .append(source.passagePosition()).append(": ")
+                    .append(source.title()).append(" | ").append(source.sourceUrl()).append('\n');
+        }
         return value.toString();
     }
 
@@ -260,17 +289,28 @@ public class GeminiQuizGateway implements QuizAiGateway {
             return input.append("There are no recent passages to exclude.").toString();
         }
         input.append("Recent passages to exclude:\n");
-        recentPassages.forEach(passage -> input
-                .append("- area ").append(passage.position())
-                .append(", ").append(passage.challengeDate())
-                .append(": title=").append(display(passage.title()))
-                .append(", topic=").append(display(passage.topic()))
-                .append('\n'));
+        appendRecentPassages(input, recentPassages);
         return input.toString();
     }
 
+    private void appendRecentPassages(
+            StringBuilder input,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
+        for (QuizGenerationData.RecentPassageRow passage : recentPassages) {
+            input.append("- area ").append(passage.position())
+                    .append(", ").append(passage.challengeDate())
+                    .append(": title=").append(display(passage.title()))
+                    .append(", topic=").append(display(passage.topic()))
+                    .append('\n');
+        }
+    }
+
     private String display(String value) {
-        return value == null || value.isBlank() ? "(unspecified)" : value.trim();
+        if (value == null || value.isBlank()) {
+            return "(unspecified)";
+        }
+        return value.trim();
     }
 
     @Override
@@ -290,12 +330,19 @@ public class GeminiQuizGateway implements QuizAiGateway {
     Set<Integer> repairPositions(List<QuizValidation.Issue> issues) {
         Set<Integer> positions = new TreeSet<>();
         if (issues != null) {
-            issues.stream()
-                    .map(QuizValidation.Issue::passagePosition)
-                    .filter(position -> position != null && position >= 1 && position <= 3)
-                    .forEach(positions::add);
+            for (QuizValidation.Issue issue : issues) {
+                Integer position = issue.passagePosition();
+                if (position != null && position >= 1 && position <= 3) {
+                    positions.add(position);
+                }
+            }
         }
-        return positions.isEmpty() ? Set.of(1, 2, 3) : positions;
+        if (positions.isEmpty()) {
+            positions.add(1);
+            positions.add(2);
+            positions.add(3);
+        }
+        return positions;
     }
 
     QuizGenerationData.GeneratedQuiz mergeRepairs(
@@ -320,7 +367,9 @@ public class GeminiQuizGateway implements QuizAiGateway {
                     "Repair response did not contain exactly the requested passages.", null);
         }
         List<QuizGenerationData.GeneratedPassage> merged = new ArrayList<>(quiz.passages());
-        repairs.forEach(repair -> merged.set(repair.passagePosition() - 1, repair.passage()));
+        for (PassageRepair repair : repairs) {
+            merged.set(repair.passagePosition() - 1, repair.passage());
+        }
         return new QuizGenerationData.GeneratedQuiz(quiz.challengeDate(), merged);
     }
 
@@ -345,15 +394,21 @@ public class GeminiQuizGateway implements QuizAiGateway {
                     .body(JsonNode.class);
             return extractOutputText(response);
         } catch (RestClientResponseException exception) {
-            String code = switch (exception.getStatusCode().value()) {
-                case 429 -> "GEMINI_RATE_LIMITED";
-                case 502, 503, 504 -> "GEMINI_UNAVAILABLE";
-                default -> "GEMINI_REQUEST_FAILED";
-            };
+            String code = requestErrorCode(exception.getStatusCode().value());
             throw gatewayError(code, "Gemini request failed.", exception);
         } catch (RestClientException exception) {
             throw gatewayError("GEMINI_REQUEST_FAILED", "Gemini request failed.", exception);
         }
+    }
+
+    private String requestErrorCode(int statusCode) {
+        if (statusCode == 429) {
+            return "GEMINI_RATE_LIMITED";
+        }
+        if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
+            return "GEMINI_UNAVAILABLE";
+        }
+        return "GEMINI_REQUEST_FAILED";
     }
 
     JsonNode extractOutputText(JsonNode response) {
@@ -382,8 +437,11 @@ public class GeminiQuizGateway implements QuizAiGateway {
     }
 
     private ApiException gatewayError(String code, String message, Exception cause) {
-        return new ApiException(HttpStatus.BAD_GATEWAY, code,
-                cause == null ? message : message + " " + cause.getMessage());
+        String detail = message;
+        if (cause != null) {
+            detail = message + " " + cause.getMessage();
+        }
+        return new ApiException(HttpStatus.BAD_GATEWAY, code, detail);
     }
 
     private JsonNode generationSchema() {
@@ -474,10 +532,25 @@ public class GeminiQuizGateway implements QuizAiGateway {
         }
     }
 
-    @Override public String provider() { return "GEMINI"; }
-    @Override public String generationModel() { return properties.getGemini().getGenerationModel(); }
-    @Override public String validationModel() { return properties.getGemini().getValidationModel(); }
-    @Override public String sourceModel() { return properties.getGemini().getSourceModel(); }
+    @Override
+    public String provider() {
+        return "GEMINI";
+    }
+
+    @Override
+    public String generationModel() {
+        return properties.getGemini().getGenerationModel();
+    }
+
+    @Override
+    public String validationModel() {
+        return properties.getGemini().getValidationModel();
+    }
+
+    @Override
+    public String sourceModel() {
+        return properties.getGemini().getSourceModel();
+    }
 
     public record GeneratedQuizPayload(List<QuizGenerationData.GeneratedPassage> passages) {}
     public record RepairPayload(List<PassageRepair> repairs) {}

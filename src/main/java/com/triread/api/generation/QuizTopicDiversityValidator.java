@@ -1,12 +1,11 @@
 package com.triread.api.generation;
 
 import com.triread.api.admin.AdminQuizService;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -52,7 +51,7 @@ public class QuizTopicDiversityValidator {
         }
 
         Set<Integer> duplicatedPositions = new HashSet<>();
-        List<QuizValidation.Issue> issues = new java.util.ArrayList<>();
+        List<QuizValidation.Issue> issues = new ArrayList<>();
         validateGeneratedPassages(quiz.passages(), duplicatedPositions, issues);
         if (recentPassages == null || recentPassages.isEmpty()) {
             return result(issues);
@@ -60,22 +59,31 @@ public class QuizTopicDiversityValidator {
         for (int index = 0; index < quiz.passages().size(); index++) {
             int position = index + 1;
             AdminQuizService.CreatePassage passage = quiz.passages().get(index);
-            recentPassages.stream()
-                    .filter(recent -> overlapsRecentPassage(passage, recent))
-                    .findFirst()
-                    .ifPresent(recent -> {
-                        if (duplicatedPositions.add(position)) {
-                            issues.add(new QuizValidation.Issue(
-                                    "ERROR", "RECENT_TOPIC_OVERLAP", position, null,
-                                    "Generated passage '" + passage.title() + "' (" + passage.topic()
-                                            + ") overlaps recent passage '" + recent.title()
-                                            + "' (" + recent.topic() + ") from area "
-                                            + recent.position() + "."
-                            ));
-                        }
-                    });
+            QuizGenerationData.RecentPassageRow overlappingPassage =
+                    findOverlappingPassage(passage, recentPassages);
+            if (overlappingPassage != null && duplicatedPositions.add(position)) {
+                issues.add(new QuizValidation.Issue(
+                        "ERROR", "RECENT_TOPIC_OVERLAP", position, null,
+                        "Generated passage '" + passage.title() + "' (" + passage.topic()
+                                + ") overlaps recent passage '" + overlappingPassage.title()
+                                + "' (" + overlappingPassage.topic() + ") from area "
+                                + overlappingPassage.position() + "."
+                ));
+            }
         }
         return result(issues);
+    }
+
+    private QuizGenerationData.RecentPassageRow findOverlappingPassage(
+            AdminQuizService.CreatePassage passage,
+            List<QuizGenerationData.RecentPassageRow> recentPassages
+    ) {
+        for (QuizGenerationData.RecentPassageRow recentPassage : recentPassages) {
+            if (overlapsRecentPassage(passage, recentPassage)) {
+                return recentPassage;
+            }
+        }
+        return null;
     }
 
     private void validateGeneratedPassages(
@@ -87,7 +95,9 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreatePassage right = passages.get(rightIndex);
             for (int leftIndex = 0; leftIndex < rightIndex; leftIndex++) {
                 AdminQuizService.CreatePassage left = passages.get(leftIndex);
-                if (!overlapsGeneratedPassage(left, right)) continue;
+                if (!overlapsGeneratedPassage(left, right)) {
+                    continue;
+                }
 
                 int position = rightIndex + 1;
                 if (duplicatedPositions.add(position)) {
@@ -107,14 +117,22 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreatePassage left,
             AdminQuizService.CreatePassage right
     ) {
-        if (contentSimilarity(left.content(), right.content()) >= 0.68) return true;
-        if (similarTitle(left.title(), right.title())) return true;
+        if (contentSimilarity(left.content(), right.content()) >= 0.68) {
+            return true;
+        }
+        if (similarTitle(left.title(), right.title())) {
+            return true;
+        }
 
         boolean leftTopicSpecific = isSpecificTopic(left.topic());
         boolean rightTopicSpecific = isSpecificTopic(right.topic());
         if (leftTopicSpecific && rightTopicSpecific
-                && similarTitle(left.topic(), right.topic())) return true;
-        if (leftTopicSpecific && similarTitle(left.topic(), right.title())) return true;
+                && similarTitle(left.topic(), right.topic())) {
+            return true;
+        }
+        if (leftTopicSpecific && similarTitle(left.topic(), right.title())) {
+            return true;
+        }
         return rightTopicSpecific && similarTitle(left.title(), right.topic());
     }
 
@@ -127,28 +145,41 @@ public class QuizTopicDiversityValidator {
             AdminQuizService.CreatePassage passage,
             QuizGenerationData.RecentPassageRow recent
     ) {
-        if (contentSimilarity(passage.content(), recent.content()) >= 0.68) return true;
-        if (similarTitle(passage.title(), recent.title())) return true;
+        if (contentSimilarity(passage.content(), recent.content()) >= 0.68) {
+            return true;
+        }
+        if (similarTitle(passage.title(), recent.title())) {
+            return true;
+        }
 
         boolean generatedTopicSpecific = isSpecificTopic(passage.topic());
         boolean recentTopicSpecific = isSpecificTopic(recent.topic());
         if (generatedTopicSpecific && recentTopicSpecific
-                && similarTitle(passage.topic(), recent.topic())) return true;
-        if (generatedTopicSpecific && similarTitle(passage.topic(), recent.title())) return true;
+                && similarTitle(passage.topic(), recent.topic())) {
+            return true;
+        }
+        if (generatedTopicSpecific && similarTitle(passage.topic(), recent.title())) {
+            return true;
+        }
         return recentTopicSpecific && similarTitle(passage.title(), recent.topic());
     }
 
     double contentSimilarity(String left, String right) {
         String normalizedLeft = normalizeCompact(left);
         String normalizedRight = normalizeCompact(right);
-        if (Math.min(normalizedLeft.length(), normalizedRight.length()) < 200) return 0;
+        if (Math.min(normalizedLeft.length(), normalizedRight.length()) < 200) {
+            return 0;
+        }
         Set<String> leftGrams = grams(normalizedLeft, 4);
         Set<String> rightGrams = grams(normalizedRight, 4);
         Set<String> intersection = new HashSet<>(leftGrams);
         intersection.retainAll(rightGrams);
         Set<String> union = new HashSet<>(leftGrams);
         union.addAll(rightGrams);
-        return union.isEmpty() ? 0 : (double) intersection.size() / union.size();
+        if (union.isEmpty()) {
+            return 0;
+        }
+        return (double) intersection.size() / union.size();
     }
 
     private Set<String> grams(String value, int size) {
@@ -160,47 +191,87 @@ public class QuizTopicDiversityValidator {
     }
 
     private String normalizeCompact(String value) {
-        if (value == null) return "";
+        if (value == null) {
+            return "";
+        }
         return value.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     private boolean isSpecificTopic(String topic) {
         String normalized = normalize(topic);
-        if (normalized.isBlank() || BROAD_AREA_TOPICS.contains(normalized)) return false;
+        if (normalized.isBlank() || BROAD_AREA_TOPICS.contains(normalized)) {
+            return false;
+        }
 
-        Set<String> topicTerms = Arrays.stream(normalized.split("\\s+"))
-                .map(this::stripParticle)
-                .filter(term -> !term.isBlank())
-                .collect(Collectors.toSet());
-        Set<String> specificTerms = topicTerms.stream()
-                .filter(term -> !BROAD_AREA_TERMS.contains(term))
-                .collect(Collectors.toSet());
+        Set<String> topicTerms = new HashSet<>();
+        String[] words = normalized.split("\\s+");
+        for (String word : words) {
+            String term = stripParticle(word);
+            if (!term.isBlank()) {
+                topicTerms.add(term);
+            }
+        }
+
+        Set<String> specificTerms = new HashSet<>();
+        for (String term : topicTerms) {
+            if (!BROAD_AREA_TERMS.contains(term)) {
+                specificTerms.add(term);
+            }
+        }
         return specificTerms.size() >= 2;
     }
 
     boolean similarTitle(String left, String right) {
         String normalizedLeft = normalize(left);
         String normalizedRight = normalize(right);
-        if (normalizedLeft.isBlank() || normalizedRight.isBlank()) return false;
+        if (normalizedLeft.isBlank() || normalizedRight.isBlank()) {
+            return false;
+        }
         if (Math.min(normalizedLeft.length(), normalizedRight.length()) >= 8
                 && (normalizedLeft.contains(normalizedRight)
-                || normalizedRight.contains(normalizedLeft))) return true;
+                || normalizedRight.contains(normalizedLeft))) {
+            return true;
+        }
 
         Set<String> leftTerms = terms(left);
         Set<String> rightTerms = terms(right);
-        if (leftTerms.isEmpty() || rightTerms.isEmpty()) return false;
+        if (leftTerms.isEmpty() || rightTerms.isEmpty()) {
+            return false;
+        }
         Set<String> common = new HashSet<>(leftTerms);
         common.retainAll(rightTerms);
         return common.size() >= 2;
     }
 
     private Set<String> terms(String value) {
-        return Arrays.stream(normalize(value).split("\\s+"))
-                .map(this::stripParticle)
-                .filter(term -> term.length() >= 2)
-                .filter(term -> !GENERIC_TERMS.contains(term))
-                .filter(term -> !term.chars().allMatch(Character::isDigit))
-                .collect(Collectors.toSet());
+        Set<String> result = new HashSet<>();
+        String[] words = normalize(value).split("\\s+");
+        for (String word : words) {
+            String term = stripParticle(word);
+            if (term.length() < 2) {
+                continue;
+            }
+            if (GENERIC_TERMS.contains(term)) {
+                continue;
+            }
+            if (containsOnlyDigits(term)) {
+                continue;
+            }
+            result.add(term);
+        }
+        return result;
+    }
+
+    private boolean containsOnlyDigits(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            if (!Character.isDigit(value.charAt(index))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private String stripParticle(String term) {
@@ -213,7 +284,9 @@ public class QuizTopicDiversityValidator {
     }
 
     private String normalize(String value) {
-        if (value == null) return "";
+        if (value == null) {
+            return "";
+        }
         return value.toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ")
                 .trim();
