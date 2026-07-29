@@ -1,5 +1,6 @@
 package com.triread.api.auth;
 
+import com.triread.api.common.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -16,7 +17,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,18 +31,18 @@ public class AuthController {
     private final AuthService authService;
     private final LoginAttemptService loginAttemptService;
     private final SecurityContextRepository securityContextRepository;
-    private final SessionRegistry sessionRegistry;
+    private final SessionInvalidationService sessionInvalidationService;
 
     public AuthController(
             AuthService authService,
             LoginAttemptService loginAttemptService,
             SecurityContextRepository securityContextRepository,
-            SessionRegistry sessionRegistry
+            SessionInvalidationService sessionInvalidationService
     ) {
         this.authService = authService;
         this.loginAttemptService = loginAttemptService;
         this.securityContextRepository = securityContextRepository;
-        this.sessionRegistry = sessionRegistry;
+        this.sessionInvalidationService = sessionInvalidationService;
     }
 
     @PostMapping("/signup")
@@ -56,7 +56,7 @@ public class AuthController {
                 signupRequest.displayName(),
                 signupRequest.pin()
         );
-        saveAuthentication(user, request, response);
+        startSession(user, request, response);
         return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.from(user));
     }
 
@@ -67,18 +67,8 @@ public class AuthController {
             HttpServletResponse response
     ) {
         String clientAddress = request.getRemoteAddr();
-        loginAttemptService.assertAllowed(clientAddress, loginRequest.loginName());
-        AuthService.AuthenticatedUser user;
-        try {
-            user = authService.login(loginRequest.loginName(), loginRequest.pin());
-        } catch (com.triread.api.common.ApiException exception) {
-            if ("INVALID_CREDENTIALS".equals(exception.getCode())) {
-                loginAttemptService.recordFailure(clientAddress, loginRequest.loginName());
-            }
-            throw exception;
-        }
-        loginAttemptService.recordSuccess(clientAddress, loginRequest.loginName());
-        saveAuthentication(user, request, response);
+        AuthService.AuthenticatedUser user = authenticate(loginRequest, clientAddress);
+        startSession(user, request, response);
         return AuthResponse.from(user);
     }
 
@@ -94,24 +84,42 @@ public class AuthController {
             HttpServletRequest request
     ) {
         authService.changePin(principal.userId(), changePinRequest.currentPin(), changePinRequest.newPin());
-        sessionRegistry.getAllSessions(principal, false).forEach(session -> session.expireNow());
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            session.invalidate();
-        }
-        SecurityContextHolder.clearContext();
+        endAllSessions(principal.userId(), request);
         return ResponseEntity.noContent().build();
     }
 
-    private void saveAuthentication(
+    private AuthService.AuthenticatedUser authenticate(
+            LoginRequest loginRequest,
+            String clientAddress
+    ) {
+        loginAttemptService.assertAllowed(clientAddress, loginRequest.loginName());
+        try {
+            AuthService.AuthenticatedUser user =
+                    authService.login(loginRequest.loginName(), loginRequest.pin());
+            loginAttemptService.recordSuccess(clientAddress, loginRequest.loginName());
+            return user;
+        } catch (ApiException exception) {
+            recordLoginFailure(clientAddress, loginRequest.loginName(), exception);
+            throw exception;
+        }
+    }
+
+    private void recordLoginFailure(
+            String clientAddress,
+            String loginName,
+            ApiException exception
+    ) {
+        if ("INVALID_CREDENTIALS".equals(exception.getCode())) {
+            loginAttemptService.recordFailure(clientAddress, loginName);
+        }
+    }
+
+    private void startSession(
             AuthService.AuthenticatedUser user,
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        HttpSession existingSession = request.getSession(false);
-        if (existingSession != null) {
-            existingSession.invalidate();
-        }
+        invalidateCurrentSession(request);
 
         AuthPrincipal principal = AuthPrincipal.from(user);
         UsernamePasswordAuthenticationToken authentication =
@@ -125,9 +133,23 @@ public class AuthController {
         securityContext.setAuthentication(authentication);
         SecurityContextHolder.setContext(securityContext);
         securityContextRepository.saveContext(securityContext, request, response);
+
         HttpSession session = request.getSession(false);
         if (session != null) {
-            sessionRegistry.registerNewSession(session.getId(), principal);
+            sessionInvalidationService.registerSession(session.getId(), principal);
+        }
+    }
+
+    private void endAllSessions(long userId, HttpServletRequest request) {
+        sessionInvalidationService.invalidateUser(userId);
+        invalidateCurrentSession(request);
+        SecurityContextHolder.clearContext();
+    }
+
+    private void invalidateCurrentSession(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
         }
     }
 

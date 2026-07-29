@@ -1,19 +1,23 @@
 package com.triread.api.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.triread.api.common.ApiException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.core.session.SessionRegistry;
 
 class AuthControllerTest {
 
@@ -21,10 +25,11 @@ class AuthControllerTest {
     private final LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
     private final HttpSessionSecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
-    private final SessionRegistry sessionRegistry = mock(SessionRegistry.class);
+    private final SessionInvalidationService sessionInvalidationService =
+            mock(SessionInvalidationService.class);
     private final AuthController authController =
             new AuthController(authService, loginAttemptService, securityContextRepository,
-                    sessionRegistry);
+                    sessionInvalidationService);
 
     @AfterEach
     void clearSecurityContext() {
@@ -56,8 +61,46 @@ class AuthControllerTest {
         assertThat(savedContext.getAuthentication().isAuthenticated()).isTrue();
         assertThat(savedContext.getAuthentication().getPrincipal())
                 .isEqualTo(new AuthPrincipal(3L, "reader", "Reader", "USER"));
-        org.mockito.Mockito.verify(sessionRegistry).registerNewSession(
+        verify(sessionInvalidationService).registerSession(
                 request.getSession(false).getId(),
                 new AuthPrincipal(3L, "reader", "Reader", "USER"));
+    }
+
+    @Test
+    void loginRecordsInvalidCredentialFailure() {
+        AuthController.LoginRequest loginRequest =
+                new AuthController.LoginRequest("reader", "9999");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        doThrow(new ApiException(
+                HttpStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "Login name or PIN is incorrect."
+        )).when(authService).login("reader", "9999");
+
+        assertThatThrownBy(() -> authController.login(loginRequest, request, response))
+                .isInstanceOf(ApiException.class);
+
+        verify(loginAttemptService).assertAllowed("127.0.0.1", "reader");
+        verify(loginAttemptService).recordFailure("127.0.0.1", "reader");
+    }
+
+    @Test
+    void changePinExpiresEveryUserSessionAndCurrentSession() {
+        AuthPrincipal principal = new AuthPrincipal(3L, "reader", "Reader", "USER");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpSession session = (MockHttpSession) request.getSession(true);
+
+        ResponseEntity<Void> result = authController.changePin(
+                principal,
+                new AuthController.ChangePinRequest("1234", "5678"),
+                request
+        );
+
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(session.isInvalid()).isTrue();
+        verify(authService).changePin(3L, "1234", "5678");
+        verify(sessionInvalidationService).invalidateUser(3L);
     }
 }
