@@ -37,8 +37,11 @@ public class AdminQuizService {
         int page = PageResponse.page(requestedPage);
         int size = PageResponse.size(requestedSize);
         long total = adminQuizMapper.countQuizzes();
-        List<QuizSummary> quizzes = adminQuizMapper.findQuizzes(page * size, size).stream()
-                .map(QuizSummary::from).toList();
+        List<QuizSummary> quizzes = new ArrayList<>();
+        List<AdminQuizData.QuizRow> rows = adminQuizMapper.findQuizzes(page * size, size);
+        for (AdminQuizData.QuizRow row : rows) {
+            quizzes.add(QuizSummary.from(row));
+        }
         return new QuizPage(PageResponse.of(quizzes, page, size, total),
                 adminQuizMapper.countPendingQuizzes());
     }
@@ -50,24 +53,72 @@ public class AdminQuizService {
         List<QuizData.QuestionRow> questionRows = quizMapper.findQuestions(quizSetId);
         List<QuizData.OptionRow> optionRows = quizMapper.findOptions(quizSetId);
         Map<Long, QuizData.AnswerKeyRow> keys = new HashMap<>();
-        quizMapper.findAnswerKeys(quizSetId).forEach(key -> keys.put(key.questionId(), key));
+        for (QuizData.AnswerKeyRow key : quizMapper.findAnswerKeys(quizSetId)) {
+            keys.put(key.questionId(), key);
+        }
 
-        List<PassageDetail> passages = passageRows.stream().map(passage -> new PassageDetail(
-                passage.passageId(), passage.position(), passage.title(), passage.topic(), passage.content(),
-                questionRows.stream().filter(q -> q.passageId() == passage.passageId()).map(question -> {
-                    List<OptionDetail> options = optionRows.stream()
-                            .filter(option -> option.questionId() == question.questionId())
-                            .map(option -> new OptionDetail(option.optionId(), option.position(), option.content()))
-                            .toList();
-                    QuizData.AnswerKeyRow key = keys.get(question.questionId());
-                    int correctPosition = options.stream()
-                            .filter(option -> option.optionId() == key.correctOptionId())
-                            .map(OptionDetail::position).findFirst().orElseThrow();
-                    return new QuestionDetail(question.questionId(), question.position(), question.content(),
-                            options, correctPosition, key.explanation(), key.evidence());
-                }).toList()
-        )).toList();
+        List<PassageDetail> passages = new ArrayList<>();
+        for (QuizData.PassageRow passage : passageRows) {
+            passages.add(toPassageDetail(passage, questionRows, optionRows, keys));
+        }
         return new QuizDetail(QuizSummary.from(quiz), passages);
+    }
+
+    private PassageDetail toPassageDetail(
+            QuizData.PassageRow passage,
+            List<QuizData.QuestionRow> questionRows,
+            List<QuizData.OptionRow> optionRows,
+            Map<Long, QuizData.AnswerKeyRow> keys
+    ) {
+        List<QuestionDetail> questions = new ArrayList<>();
+        for (QuizData.QuestionRow question : questionRows) {
+            if (question.passageId() == passage.passageId()) {
+                questions.add(toQuestionDetail(question, optionRows, keys));
+            }
+        }
+        return new PassageDetail(
+                passage.passageId(),
+                passage.position(),
+                passage.title(),
+                passage.topic(),
+                passage.content(),
+                questions
+        );
+    }
+
+    private QuestionDetail toQuestionDetail(
+            QuizData.QuestionRow question,
+            List<QuizData.OptionRow> optionRows,
+            Map<Long, QuizData.AnswerKeyRow> keys
+    ) {
+        List<OptionDetail> options = new ArrayList<>();
+        for (QuizData.OptionRow option : optionRows) {
+            if (option.questionId() == question.questionId()) {
+                options.add(new OptionDetail(
+                        option.optionId(), option.position(), option.content()));
+            }
+        }
+
+        QuizData.AnswerKeyRow key = keys.get(question.questionId());
+        int correctPosition = findCorrectPosition(options, key.correctOptionId());
+        return new QuestionDetail(
+                question.questionId(),
+                question.position(),
+                question.content(),
+                options,
+                correctPosition,
+                key.explanation(),
+                key.evidence()
+        );
+    }
+
+    private int findCorrectPosition(List<OptionDetail> options, long correctOptionId) {
+        for (OptionDetail option : options) {
+            if (option.optionId() == correctOptionId) {
+                return option.position();
+            }
+        }
+        throw new IllegalStateException("The correct option was not found.");
     }
 
     @Transactional
@@ -194,12 +245,21 @@ public class AdminQuizService {
             for (CreateQuestion question : passage.questions()) {
                 if (blank(question.content()) || question.options() == null
                         || question.options().size() != OPTION_COUNT
-                        || question.options().stream().anyMatch(this::blank)
+                        || hasBlankOption(question.options())
                         || question.correctOptionPosition() < 1
                         || question.correctOptionPosition() > OPTION_COUNT
                         || blank(question.explanation())) invalidContent();
             }
         }
+    }
+
+    private boolean hasBlankOption(List<String> options) {
+        for (String option : options) {
+            if (blank(option)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String nextVariantCode(LocalDate challengeDate) {

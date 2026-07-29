@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 
 import com.triread.api.common.ApiException;
+import com.triread.api.quiz.QuizData;
 import com.triread.api.quiz.QuizMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -63,6 +64,41 @@ class AdminQuizServiceTest {
         assertThat(result.page().page()).isEqualTo(1);
         assertThat(result.page().totalPages()).isEqualTo(3);
         assertThat(result.pendingCount()).isEqualTo(8);
+    }
+
+    @Test
+    void buildsQuizDetailFromMapperRows() {
+        long quizId = 7L;
+        long passageId = 11L;
+        long questionId = 21L;
+        Instant createdAt = Instant.parse("2026-07-12T03:00:00Z");
+        when(adminQuizMapper.findQuiz(quizId)).thenReturn(
+                new AdminQuizData.QuizRow(
+                        quizId, LocalDate.of(2026, 7, 19),
+                        "A", "REVIEWED", createdAt, null));
+        when(quizMapper.findPassages(quizId)).thenReturn(List.of(
+                new QuizData.PassageRow(
+                        passageId, (short) 1, "title", "passage content", "topic")));
+        when(quizMapper.findQuestions(quizId)).thenReturn(List.of(
+                new QuizData.QuestionRow(
+                        questionId, passageId, (short) 1, "question content")));
+        when(quizMapper.findOptions(quizId)).thenReturn(List.of(
+                new QuizData.OptionRow(31L, questionId, (short) 1, "first"),
+                new QuizData.OptionRow(32L, questionId, (short) 2, "second")));
+        when(quizMapper.findAnswerKeys(quizId)).thenReturn(List.of(
+                new QuizData.AnswerKeyRow(
+                        questionId, 32L, "explanation", "evidence")));
+
+        AdminQuizService.QuizDetail detail = service.getQuiz(quizId);
+
+        assertThat(detail.passages()).singleElement().satisfies(passage -> {
+            assertThat(passage.title()).isEqualTo("title");
+            assertThat(passage.questions()).singleElement().satisfies(question -> {
+                assertThat(question.options()).hasSize(2);
+                assertThat(question.correctOptionPosition()).isEqualTo(2);
+                assertThat(question.explanation()).isEqualTo("explanation");
+            });
+        });
     }
 
     @Test
