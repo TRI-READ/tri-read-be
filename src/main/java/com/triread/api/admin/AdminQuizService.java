@@ -123,11 +123,7 @@ public class AdminQuizService {
 
     @Transactional
     public QuizDetail createDraft(CreateQuiz command) {
-        validate(command);
-        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
-                command.challengeDate(), nextVariantCode(command.challengeDate()));
-        adminQuizMapper.insertQuiz(quiz);
-        writeContent(quiz.getId(), command);
+        AdminQuizData.QuizInsert quiz = createQuiz(command);
         return getQuiz(quiz.getId());
     }
 
@@ -135,11 +131,7 @@ public class AdminQuizService {
     public QuizDetail createReviewedDraft(CreateQuiz command, String aiProvider,
                                           String aiModel, String promptVersion,
                                           long generationPromptId, long validationPromptId) {
-        validate(command);
-        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
-                command.challengeDate(), nextVariantCode(command.challengeDate()));
-        adminQuizMapper.insertQuiz(quiz);
-        writeContent(quiz.getId(), command);
+        AdminQuizData.QuizInsert quiz = createQuiz(command);
         if (adminQuizMapper.markReviewed(quiz.getId(), aiProvider, aiModel, promptVersion,
                 generationPromptId, validationPromptId) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_REVIEWED",
@@ -162,18 +154,15 @@ public class AdminQuizService {
 
     @Transactional
     public QuizDetail updateDraft(long quizSetId, CreateQuiz command) {
-        validate(command);
+        validateQuiz(command);
         AdminQuizData.QuizRow quiz = requireEditable(quizSetId);
-        if ("REVIEWED".equals(quiz.status())) {
-            adminQuizMapper.invalidateGeneration(quizSetId, clock.instant());
+        invalidateGenerationIfReviewed(quiz);
+        deleteContent(quizSetId);
+
+        String variantCode = quiz.variantCode();
+        if (!quiz.challengeDate().equals(command.challengeDate())) {
+            variantCode = nextVariantCode(command.challengeDate());
         }
-        adminQuizMapper.deleteKeys(quizSetId);
-        adminQuizMapper.deleteOptions(quizSetId);
-        adminQuizMapper.deleteQuestions(quizSetId);
-        adminQuizMapper.deletePassages(quizSetId);
-        String variantCode = quiz.challengeDate().equals(command.challengeDate())
-                ? quiz.variantCode()
-                : nextVariantCode(command.challengeDate());
         adminQuizMapper.updateDraftDate(quizSetId, command.challengeDate(), variantCode);
         writeContent(quizSetId, command);
         return getQuiz(quizSetId);
@@ -182,53 +171,93 @@ public class AdminQuizService {
     @Transactional
     public void deleteDraft(long quizSetId) {
         AdminQuizData.QuizRow quiz = requireEditable(quizSetId);
-        if ("REVIEWED".equals(quiz.status())) {
-            adminQuizMapper.invalidateGeneration(quizSetId, clock.instant());
-        }
-        adminQuizMapper.deleteKeys(quizSetId);
-        adminQuizMapper.deleteOptions(quizSetId);
-        adminQuizMapper.deleteQuestions(quizSetId);
-        adminQuizMapper.deletePassages(quizSetId);
+        invalidateGenerationIfReviewed(quiz);
+        deleteContent(quizSetId);
         if (adminQuizMapper.deleteDraft(quizSetId) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_DELETED",
                     "Only a draft quiz can be deleted.");
         }
     }
 
+    private AdminQuizData.QuizInsert createQuiz(CreateQuiz command) {
+        validateQuiz(command);
+        String variantCode = nextVariantCode(command.challengeDate());
+        AdminQuizData.QuizInsert quiz = new AdminQuizData.QuizInsert(
+                command.challengeDate(), variantCode);
+        adminQuizMapper.insertQuiz(quiz);
+        writeContent(quiz.getId(), command);
+        return quiz;
+    }
+
     private void writeContent(long quizSetId, CreateQuiz command) {
         for (int passageIndex = 0; passageIndex < command.passages().size(); passageIndex++) {
             CreatePassage sourcePassage = command.passages().get(passageIndex);
-            AdminQuizData.PassageInsert passage = new AdminQuizData.PassageInsert(
-                    quizSetId, passageIndex + 1, clean(sourcePassage.title()),
-                    sourcePassage.content().trim(), clean(sourcePassage.topic())
-            );
-            adminQuizMapper.insertPassage(passage);
-            for (int questionIndex = 0; questionIndex < sourcePassage.questions().size(); questionIndex++) {
-                CreateQuestion sourceQuestion = sourcePassage.questions().get(questionIndex);
-                AdminQuizData.QuestionInsert question = new AdminQuizData.QuestionInsert(
-                        passage.getId(), questionIndex + 1, sourceQuestion.content().trim()
-                );
-                adminQuizMapper.insertQuestion(question);
-                List<AdminQuizData.OptionInsert> options = new ArrayList<>();
-                for (int optionIndex = 0; optionIndex < sourceQuestion.options().size(); optionIndex++) {
-                    AdminQuizData.OptionInsert option = new AdminQuizData.OptionInsert(
-                            question.getId(), optionIndex + 1,
-                            sourceQuestion.options().get(optionIndex).trim()
-                    );
-                    adminQuizMapper.insertOption(option);
-                    options.add(option);
-                }
-                long correctOptionId = options.get(sourceQuestion.correctOptionPosition() - 1).getId();
-                adminQuizMapper.insertKey(question.getId(), correctOptionId,
-                        sourceQuestion.explanation().trim(), clean(sourceQuestion.evidence()));
-            }
+            writePassage(quizSetId, passageIndex + 1, sourcePassage);
         }
+    }
+
+    private void writePassage(long quizSetId, int position, CreatePassage source) {
+        AdminQuizData.PassageInsert passage = new AdminQuizData.PassageInsert(
+                quizSetId,
+                position,
+                clean(source.title()),
+                source.content().trim(),
+                clean(source.topic())
+        );
+        adminQuizMapper.insertPassage(passage);
+
+        for (int questionIndex = 0; questionIndex < source.questions().size(); questionIndex++) {
+            CreateQuestion question = source.questions().get(questionIndex);
+            writeQuestion(passage.getId(), questionIndex + 1, question);
+        }
+    }
+
+    private void writeQuestion(long passageId, int position, CreateQuestion source) {
+        AdminQuizData.QuestionInsert question = new AdminQuizData.QuestionInsert(
+                passageId, position, source.content().trim());
+        adminQuizMapper.insertQuestion(question);
+
+        List<AdminQuizData.OptionInsert> options = writeOptions(question.getId(), source.options());
+        int correctIndex = source.correctOptionPosition() - 1;
+        long correctOptionId = options.get(correctIndex).getId();
+        adminQuizMapper.insertKey(
+                question.getId(),
+                correctOptionId,
+                source.explanation().trim(),
+                clean(source.evidence())
+        );
+    }
+
+    private List<AdminQuizData.OptionInsert> writeOptions(long questionId, List<String> contents) {
+        List<AdminQuizData.OptionInsert> options = new ArrayList<>();
+        for (int optionIndex = 0; optionIndex < contents.size(); optionIndex++) {
+            AdminQuizData.OptionInsert option = new AdminQuizData.OptionInsert(
+                    questionId, optionIndex + 1, contents.get(optionIndex).trim());
+            adminQuizMapper.insertOption(option);
+            options.add(option);
+        }
+        return options;
+    }
+
+    private void invalidateGenerationIfReviewed(AdminQuizData.QuizRow quiz) {
+        if ("REVIEWED".equals(quiz.status())) {
+            adminQuizMapper.invalidateGeneration(quiz.quizSetId(), clock.instant());
+        }
+    }
+
+    private void deleteContent(long quizSetId) {
+        adminQuizMapper.deleteKeys(quizSetId);
+        adminQuizMapper.deleteOptions(quizSetId);
+        adminQuizMapper.deleteQuestions(quizSetId);
+        adminQuizMapper.deletePassages(quizSetId);
     }
 
     @Transactional
     public QuizDetail publish(long quizSetId) {
         AdminQuizData.QuizRow quiz = requireQuiz(quizSetId);
-        if ("PUBLISHED".equals(quiz.status())) return getQuiz(quizSetId);
+        if ("PUBLISHED".equals(quiz.status())) {
+            return getQuiz(quizSetId);
+        }
         if (adminQuizMapper.publish(quizSetId, clock.instant()) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_PUBLISHED",
                     "Only a draft or reviewed quiz can be published.");
@@ -236,20 +265,42 @@ public class AdminQuizService {
         return getQuiz(quizSetId);
     }
 
-    private void validate(CreateQuiz command) {
-        if (command.challengeDate() == null || command.passages() == null
-                || command.passages().size() != PASSAGE_COUNT) invalidContent();
+    private void validateQuiz(CreateQuiz command) {
+        if (command == null
+                || command.challengeDate() == null
+                || command.passages() == null
+                || command.passages().size() != PASSAGE_COUNT) {
+            invalidContent();
+        }
+
         for (CreatePassage passage : command.passages()) {
-            if (blank(passage.content()) || passage.questions() == null
-                    || passage.questions().size() != QUESTION_COUNT) invalidContent();
-            for (CreateQuestion question : passage.questions()) {
-                if (blank(question.content()) || question.options() == null
-                        || question.options().size() != OPTION_COUNT
-                        || hasBlankOption(question.options())
-                        || question.correctOptionPosition() < 1
-                        || question.correctOptionPosition() > OPTION_COUNT
-                        || blank(question.explanation())) invalidContent();
-            }
+            validatePassage(passage);
+        }
+    }
+
+    private void validatePassage(CreatePassage passage) {
+        if (passage == null
+                || blank(passage.content())
+                || passage.questions() == null
+                || passage.questions().size() != QUESTION_COUNT) {
+            invalidContent();
+        }
+
+        for (CreateQuestion question : passage.questions()) {
+            validateQuestion(question);
+        }
+    }
+
+    private void validateQuestion(CreateQuestion question) {
+        if (question == null
+                || blank(question.content())
+                || question.options() == null
+                || question.options().size() != OPTION_COUNT
+                || hasBlankOption(question.options())
+                || question.correctOptionPosition() < 1
+                || question.correctOptionPosition() > OPTION_COUNT
+                || blank(question.explanation())) {
+            invalidContent();
         }
     }
 
@@ -267,7 +318,9 @@ public class AdminQuizService {
                 adminQuizMapper.findActiveVariantCodesByDate(challengeDate));
         for (char code = 'A'; code <= 'Z'; code++) {
             String candidate = String.valueOf(code);
-            if (!activeCodes.contains(candidate)) return candidate;
+            if (!activeCodes.contains(candidate)) {
+                return candidate;
+            }
         }
         throw new ApiException(HttpStatus.CONFLICT, "QUIZ_VARIANTS_EXHAUSTED",
                 "No more quiz variants can be created for this date.");
@@ -275,9 +328,13 @@ public class AdminQuizService {
 
     private AdminQuizData.QuizRow requireQuiz(long quizSetId) {
         AdminQuizData.QuizRow row = adminQuizMapper.findQuiz(quizSetId);
-        if (row == null) throw new ApiException(HttpStatus.NOT_FOUND, "QUIZ_NOT_FOUND", "The quiz was not found.");
+        if (row == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "QUIZ_NOT_FOUND",
+                    "The quiz was not found.");
+        }
         return row;
     }
+
     private AdminQuizData.QuizRow requireEditable(long quizSetId) {
         AdminQuizData.QuizRow row = requireQuiz(quizSetId);
         if (!"DRAFT".equals(row.status()) && !"REVIEWED".equals(row.status())) {
@@ -286,9 +343,22 @@ public class AdminQuizService {
         }
         return row;
     }
-    private void invalidContent() { throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUIZ_CONTENT", "A quiz requires 3 passages, 3 questions per passage, and 4 options per question."); }
-    private boolean blank(String value) { return value == null || value.isBlank(); }
-    private String clean(String value) { return blank(value) ? null : value.trim(); }
+
+    private void invalidContent() {
+        throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUIZ_CONTENT",
+                "A quiz requires 3 passages, 3 questions per passage, and 4 options per question.");
+    }
+
+    private boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private String clean(String value) {
+        if (blank(value)) {
+            return null;
+        }
+        return value.trim();
+    }
 
     public record CreateQuiz(LocalDate challengeDate, List<CreatePassage> passages) {}
     public record CreatePassage(String title, String topic, String content, List<CreateQuestion> questions) {}

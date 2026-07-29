@@ -48,6 +48,17 @@ class AdminQuizServiceTest {
     }
 
     @Test
+    void createRejectsNullCommandBeforeSaving() {
+        assertThatThrownBy(() -> service.createDraft(null))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getCode()).isEqualTo("INVALID_QUIZ_CONTENT");
+                });
+
+        verify(adminQuizMapper, never()).insertQuiz(any());
+    }
+
+    @Test
     void listsQuizDraftsWithServerSidePagination() {
         Instant createdAt = Instant.parse("2026-07-12T03:00:00Z");
         when(adminQuizMapper.countQuizzes()).thenReturn(14L);

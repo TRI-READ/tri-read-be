@@ -50,6 +50,18 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void keepsSameRoleWithoutUpdatingDatabaseOrSessions() {
+        AdminUserService service = service();
+        when(authMapper.findById(2L)).thenReturn(user(2L, "reader", "USER"));
+
+        AdminUserService.UserSummary result = service.updateRole(1L, 2L, "user");
+
+        assertThat(result.role()).isEqualTo("USER");
+        verify(authMapper, never()).updateRole(2L, "USER");
+        verify(sessionInvalidationService, never()).invalidateUser(2L);
+    }
+
+    @Test
     void rejectsSelfDemotion() {
         AdminUserService service = service();
         when(authMapper.findById(1L)).thenReturn(user(1L, "owner", "ADMIN"));
@@ -81,6 +93,18 @@ class AdminUserServiceTest {
 
         assertThat(result.enabled()).isFalse();
         verify(sessionInvalidationService).invalidateUser(2L);
+    }
+
+    @Test
+    void keepsSameStatusWithoutUpdatingDatabaseOrSessions() {
+        AdminUserService service = service();
+        when(authMapper.findById(2L)).thenReturn(user(2L, "reader", "USER"));
+
+        AdminUserService.UserSummary result = service.updateEnabled(1L, 2L, true);
+
+        assertThat(result.enabled()).isTrue();
+        verify(authMapper, never()).updateEnabled(2L, true);
+        verify(sessionInvalidationService, never()).invalidateUser(2L);
     }
 
     @Test
