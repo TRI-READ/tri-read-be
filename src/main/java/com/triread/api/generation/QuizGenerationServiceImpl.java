@@ -148,69 +148,55 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             Long persistedQuizId = null;
             try {
-                updateLog(logId, null, "GENERATING", attempt, null, latestRaw, null, null);
+                updateLog(logId, null, "GENERATING", attempt, null,
+                        latestRaw, null, null);
                 candidate = createCandidate(
                         logId, targetDate, recentPassages, sourceBrief,
                         prompts.generation(), candidate, repairIssues);
                 latestRaw = serialize(candidate);
-                AdminQuizService.CreateQuiz generated = candidate.toCreateQuiz();
-                updateLog(logId, null, "VALIDATING", attempt, null, latestRaw, null, null);
+                updateLog(logId, null, "VALIDATING", attempt, null,
+                        latestRaw, null, null);
 
-                QuizValidation.Result ruleResult = ruleValidator.validate(candidate);
-                saveValidation(logId, null, attempt, "RULE", ruleResult);
-                if (!passes(ruleResult)) {
-                    repairIssues = ruleResult.issues();
-                    latestError = summarize(ruleResult);
-                    updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
-                            attempt, ruleResult.score(), latestRaw, latestError,
-                            attempt == maxAttempts ? clock.instant() : null);
+                QuizValidation.Result validation = validateCandidate(
+                        logId, attempt, candidate, recentPassages,
+                        prompts.validation());
+                if (!passes(validation)) {
+                    repairIssues = validation.issues();
+                    latestError = summarize(validation);
+                    boolean finalAttempt = attempt == maxAttempts;
+                    updateLog(logId, null,
+                            finalAttempt ? "FAILED" : "RETRYING",
+                            attempt, validation.score(), latestRaw, latestError,
+                            finalAttempt ? clock.instant() : null);
                     continue;
                 }
 
-                QuizValidation.Result diversityResult = topicDiversityValidator.validate(
-                        generated, recentPassages);
-                saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
-                if (!passes(diversityResult)) {
-                    repairIssues = diversityResult.issues();
-                    latestError = summarize(diversityResult);
-                    updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
-                            attempt, diversityResult.score(), latestRaw, latestError,
-                            attempt == maxAttempts ? clock.instant() : null);
-                    continue;
-                }
-
-                int finalScore = Math.min(ruleResult.score(), diversityResult.score());
-                if (properties.isAiValidationEnabled()) {
-                    QuizValidation.Result aiResult =
-                            requestAiValidation(logId, candidate, prompts.validation());
-                    saveValidation(logId, null, attempt, "AI", aiResult);
-                    finalScore = Math.min(finalScore, aiResult.score());
-                    if (!passes(aiResult)) {
-                        repairIssues = aiResult.issues();
-                        latestError = summarize(aiResult);
-                        updateLog(logId, null, attempt == maxAttempts ? "FAILED" : "RETRYING",
-                                attempt, finalScore, latestRaw, latestError,
-                                attempt == maxAttempts ? clock.instant() : null);
-                        continue;
-                    }
-                }
-
-                AdminQuizService.QuizDetail quiz = adminQuizService.createReviewedDraft(
-                        generated, aiGateway.provider(), aiGateway.generationModel(), prompts.versionLabel(),
-                        prompts.generation().promptTemplateId(), prompts.validation().promptTemplateId());
-                long quizSetId = quiz.quiz().quizSetId();
-                persistedQuizId = quizSetId;
+                AdminQuizService.QuizDetail quiz =
+                        adminQuizService.createReviewedDraft(
+                                candidate.toCreateQuiz(),
+                                aiGateway.provider(),
+                                aiGateway.generationModel(),
+                                prompts.versionLabel(),
+                                prompts.generation().promptTemplateId(),
+                                prompts.validation().promptTemplateId());
+                persistedQuizId = quiz.quiz().quizSetId();
                 if (sourceBrief.grounded()) {
-                    mapper.linkSourcesToQuiz(quizSetId, sourceBrief.sourceBriefId());
+                    mapper.linkSourcesToQuiz(
+                            persistedQuizId, sourceBrief.sourceBriefId());
                 }
-                boolean autoPublished = properties.isAutoPublish() && sourceBrief.grounded();
+
+                boolean autoPublished =
+                        properties.isAutoPublish() && sourceBrief.grounded();
                 if (autoPublished) {
-                    quiz = adminQuizService.publish(quizSetId);
+                    quiz = adminQuizService.publish(persistedQuizId);
                 }
+
                 String status = autoPublished ? "PUBLISHED" : "READY";
-                updateLog(logId, quizSetId, status, attempt, finalScore,
-                        latestRaw, null, clock.instant());
-                return new GenerationResult(logId, status, attempt, finalScore, autoPublished, quiz);
+                updateLog(logId, persistedQuizId, status, attempt,
+                        validation.score(), latestRaw, null, clock.instant());
+                return new GenerationResult(
+                        logId, status, attempt, validation.score(),
+                        autoPublished, quiz);
             } catch (ApiException exception) {
                 latestError = exception.getCode() + ": " + exception.getMessage();
                 if (persistedQuizId != null) {
@@ -218,11 +204,14 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                             null, latestRaw, latestError, clock.instant());
                     throw exception;
                 }
-                boolean terminalError = exception.getCode().endsWith("_API_KEY_MISSING")
-                        || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(exception.getCode());
+                boolean terminalError =
+                        exception.getCode().endsWith("_API_KEY_MISSING")
+                                || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED"
+                                .equals(exception.getCode());
                 boolean finalAttempt = attempt == maxAttempts || terminalError;
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
-                        null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
+                        null, latestRaw, latestError,
+                        finalAttempt ? clock.instant() : null);
                 if (terminalError) {
                     throw exception;
                 }
@@ -230,7 +219,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     waitBeforeRetry(attempt);
                 }
             } catch (RuntimeException exception) {
-                latestError = exception.getClass().getSimpleName() + ": " + exception.getMessage();
+                latestError =
+                        exception.getClass().getSimpleName() + ": " + exception.getMessage();
                 if (persistedQuizId != null) {
                     updateLog(logId, persistedQuizId, "FAILED", attempt,
                             null, latestRaw, latestError, clock.instant());
@@ -238,12 +228,50 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 }
                 boolean finalAttempt = attempt == maxAttempts;
                 updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
-                        null, latestRaw, latestError, finalAttempt ? clock.instant() : null);
+                        null, latestRaw, latestError,
+                        finalAttempt ? clock.instant() : null);
             }
         }
 
         throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUIZ_GENERATION_FAILED",
                 "Quiz generation failed after " + maxAttempts + " attempts. " + latestError);
+    }
+
+    private QuizValidation.Result validateCandidate(
+            long logId,
+            int attempt,
+            QuizGenerationData.GeneratedQuiz candidate,
+            List<QuizGenerationData.RecentPassageRow> recentPassages,
+            PromptTemplateService.PromptSnapshot validationPrompt
+    ) {
+        QuizValidation.Result ruleResult = ruleValidator.validate(candidate);
+        saveValidation(logId, null, attempt, "RULE", ruleResult);
+        if (!passes(ruleResult)) {
+            return ruleResult;
+        }
+
+        AdminQuizService.CreateQuiz generated = candidate.toCreateQuiz();
+        QuizValidation.Result diversityResult =
+                topicDiversityValidator.validate(generated, recentPassages);
+        saveValidation(logId, null, attempt, "DIVERSITY", diversityResult);
+        if (!passes(diversityResult)) {
+            return diversityResult;
+        }
+
+        int finalScore = Math.min(ruleResult.score(), diversityResult.score());
+        if (!properties.isAiValidationEnabled()) {
+            return new QuizValidation.Result(true, finalScore, List.of());
+        }
+
+        QuizValidation.Result aiResult =
+                requestAiValidation(logId, candidate, validationPrompt);
+        saveValidation(logId, null, attempt, "AI", aiResult);
+        finalScore = Math.min(finalScore, aiResult.score());
+        if (!passes(aiResult)) {
+            return new QuizValidation.Result(
+                    false, finalScore, aiResult.issues());
+        }
+        return new QuizValidation.Result(true, finalScore, List.of());
     }
 
     private QuizGenerationData.GeneratedQuiz createCandidate(

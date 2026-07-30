@@ -3,7 +3,10 @@ package com.triread.api.generation;
 import com.triread.api.admin.AdminQuizService;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class QuizGenerationData {
     private QuizGenerationData() {}
@@ -66,9 +69,11 @@ public final class QuizGenerationData {
         }
 
         public AdminQuizService.CreateQuiz toCreateQuiz() {
-            return new AdminQuizService.CreateQuiz(challengeDate, passages.stream()
-                    .map(GeneratedPassage::toCreatePassage)
-                    .toList());
+            List<AdminQuizService.CreatePassage> createPassages = new ArrayList<>();
+            for (GeneratedPassage passage : passages) {
+                createPassages.add(passage.toCreatePassage());
+            }
+            return new AdminQuizService.CreateQuiz(challengeDate, createPassages);
         }
     }
 
@@ -79,9 +84,12 @@ public final class QuizGenerationData {
         }
 
         public AdminQuizService.CreatePassage toCreatePassage() {
-            return new AdminQuizService.CreatePassage(title, topic, content, questions.stream()
-                    .map(GeneratedQuestion::toCreateQuestion)
-                    .toList());
+            List<AdminQuizService.CreateQuestion> createQuestions = new ArrayList<>();
+            for (GeneratedQuestion question : questions) {
+                createQuestions.add(question.toCreateQuestion());
+            }
+            return new AdminQuizService.CreatePassage(
+                    title, topic, content, createQuestions);
         }
     }
 
@@ -131,13 +139,26 @@ public final class QuizGenerationData {
         }
 
         public boolean grounded() {
-            return "READY".equals(status)
-                    && java.util.stream.IntStream.rangeClosed(1, 3)
-                    .allMatch(position -> sources.stream()
-                            .filter(source -> source.passagePosition() == position && source.verified())
-                            .map(ContentSource::sourceUrl)
-                            .distinct()
-                            .count() >= 2);
+            if (!"READY".equals(status)) {
+                return false;
+            }
+
+            for (int position = 1; position <= 3; position++) {
+                if (countVerifiedUrls(position) < 2) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private int countVerifiedUrls(int passagePosition) {
+            Set<String> urls = new HashSet<>();
+            for (ContentSource source : sources) {
+                if (source.passagePosition() == passagePosition && source.verified()) {
+                    urls.add(source.sourceUrl());
+                }
+            }
+            return urls.size();
         }
     }
 
