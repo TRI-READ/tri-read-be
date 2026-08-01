@@ -2,13 +2,13 @@ package com.triread.api.group;
 
 import com.triread.api.common.ApiException;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.List;
-import java.time.temporal.ChronoUnit;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,17 +69,7 @@ public class GroupServiceImpl implements GroupService {
     @Override
     @Transactional
     public GroupDetail joinGroup(long userId, String rawInviteCode) {
-        String normalizedCode = inviteCodeService.normalize(rawInviteCode);
-        if (normalizedCode.length() != GroupInviteCodeService.CODE_LENGTH) {
-            throw invalidInviteException();
-        }
-
-        GroupData.InviteRow invite = groupMapper.findInviteForUpdate(
-                inviteCodeService.hash(normalizedCode)
-        );
-        if (invite == null || isUnavailable(invite)) {
-            throw invalidInviteException();
-        }
+        GroupData.InviteRow invite = findAvailableInvite(rawInviteCode);
         if (groupMapper.findGroupForMember(invite.groupId(), userId) != null) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
@@ -113,8 +103,11 @@ public class GroupServiceImpl implements GroupService {
     public void revokeInvite(long groupId, long inviteId, long userId) {
         requireOwnerGroup(groupId, userId);
         if (groupMapper.disableInvite(groupId, inviteId) != 1) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "GROUP_INVITE_NOT_FOUND",
-                    "The active invite was not found.");
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND,
+                    "GROUP_INVITE_NOT_FOUND",
+                    "The active invite was not found."
+            );
         }
     }
 
@@ -127,10 +120,9 @@ public class GroupServiceImpl implements GroupService {
                     "Transfer ownership before leaving the group.");
         }
         GroupData.MemberRow member = groupMapper.findMember(groupId, memberUserId);
-        if (member == null || !MEMBER_ROLE.equals(member.role())
-                || groupMapper.deleteMember(groupId, memberUserId) != 1) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "GROUP_MEMBER_NOT_FOUND",
-                    "The group member was not found.");
+        requireRegularMember(member);
+        if (groupMapper.deleteMember(groupId, memberUserId) != 1) {
+            throw memberNotFoundException();
         }
     }
 
@@ -143,10 +135,7 @@ public class GroupServiceImpl implements GroupService {
                     "This user already owns the group.");
         }
         GroupData.MemberRow newOwner = groupMapper.findMember(groupId, newOwnerUserId);
-        if (newOwner == null || !MEMBER_ROLE.equals(newOwner.role())) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "GROUP_MEMBER_NOT_FOUND",
-                    "The group member was not found.");
-        }
+        requireRegularMember(newOwner);
         if (groupMapper.updateMemberRole(groupId, userId, MEMBER_ROLE) != 1
                 || groupMapper.updateMemberRole(groupId, newOwnerUserId, OWNER_ROLE) != 1) {
             throw new ApiException(HttpStatus.CONFLICT, "GROUP_OWNER_TRANSFER_FAILED",
@@ -165,6 +154,13 @@ public class GroupServiceImpl implements GroupService {
         List<GroupData.ActivityRow> rows = groupMapper.findWeeklyActivity(
                 groupId, startDate, endDate.plusDays(2), today
         );
+        List<MemberActivity> ranking = createRanking(rows);
+        int todayCompletedCount = countTodayCompleted(rows);
+        return new GroupActivity(startDate, endDate, group.memberCount(),
+                todayCompletedCount, ranking);
+    }
+
+    private List<MemberActivity> createRanking(List<GroupData.ActivityRow> rows) {
         List<MemberActivity> ranking = new ArrayList<>();
         int rank = 0;
         int previousScore = Integer.MIN_VALUE;
@@ -176,33 +172,72 @@ public class GroupServiceImpl implements GroupService {
             }
             ranking.add(MemberActivity.from(rank, row));
         }
-        int todayCompletedCount = (int) rows.stream()
-                .filter(GroupData.ActivityRow::todayCompleted)
-                .count();
-        return new GroupActivity(startDate, endDate, group.memberCount(),
-                todayCompletedCount, ranking);
+        return ranking;
+    }
+
+    private int countTodayCompleted(List<GroupData.ActivityRow> rows) {
+        int completedCount = 0;
+        for (GroupData.ActivityRow row : rows) {
+            if (row.todayCompleted()) {
+                completedCount++;
+            }
+        }
+        return completedCount;
     }
 
     private InviteCodeResponse createInvite(long groupId, long userId, Integer expiresInDays,
                                             Integer maxUses, boolean revokeExisting) {
-        if (expiresInDays != null && (expiresInDays < 1 || expiresInDays > 30)
-                || maxUses != null && (maxUses < 1 || maxUses > 100)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_POLICY",
-                    "Invite expiry or usage limit is outside the allowed range.");
-        }
+        validateInvitePolicy(expiresInDays, maxUses);
         if (revokeExisting) {
             groupMapper.disableGroupInvites(groupId);
         }
+
         String inviteCode = inviteCodeService.generateCode();
         String normalizedCode = inviteCodeService.normalize(inviteCode);
-        Instant expiresAt = expiresInDays == null ? null
-                : clock.instant().plus(expiresInDays, ChronoUnit.DAYS);
+        Instant expiresAt = calculateExpiration(expiresInDays);
         groupMapper.insertInvite(groupId, inviteCodeService.hash(normalizedCode), userId,
                 expiresAt, maxUses);
-        GroupData.InviteManagementRow created = groupMapper.findInvites(groupId).stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Created invite could not be loaded"));
+        GroupData.InviteManagementRow created = findNewestInvite(groupId);
         return new InviteCodeResponse(inviteCode, InviteSummary.from(created));
+    }
+
+    private GroupData.InviteRow findAvailableInvite(String rawInviteCode) {
+        String normalizedCode = inviteCodeService.normalize(rawInviteCode);
+        if (normalizedCode.length() != GroupInviteCodeService.CODE_LENGTH) {
+            throw invalidInviteException();
+        }
+
+        String inviteHash = inviteCodeService.hash(normalizedCode);
+        GroupData.InviteRow invite = groupMapper.findInviteForUpdate(inviteHash);
+        if (invite == null || isUnavailable(invite)) {
+            throw invalidInviteException();
+        }
+        return invite;
+    }
+
+    private void validateInvitePolicy(Integer expiresInDays, Integer maxUses) {
+        boolean invalidExpiration = expiresInDays != null
+                && (expiresInDays < 1 || expiresInDays > 30);
+        boolean invalidMaxUses = maxUses != null && (maxUses < 1 || maxUses > 100);
+        if (invalidExpiration || invalidMaxUses) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_INVITE_POLICY",
+                    "Invite expiry or usage limit is outside the allowed range.");
+        }
+    }
+
+    private Instant calculateExpiration(Integer expiresInDays) {
+        if (expiresInDays == null) {
+            return null;
+        }
+        return clock.instant().plus(expiresInDays, ChronoUnit.DAYS);
+    }
+
+    private GroupData.InviteManagementRow findNewestInvite(long groupId) {
+        List<GroupData.InviteManagementRow> invites = groupMapper.findInvites(groupId);
+        if (invites.isEmpty()) {
+            throw new IllegalStateException("Created invite could not be loaded");
+        }
+        return invites.get(0);
     }
 
     private GroupData.GroupRow requireMemberGroup(long groupId, long userId) {
@@ -228,10 +263,18 @@ public class GroupServiceImpl implements GroupService {
         }
     }
 
+    private void requireRegularMember(GroupData.MemberRow member) {
+        if (member == null || !MEMBER_ROLE.equals(member.role())) {
+            throw memberNotFoundException();
+        }
+    }
+
     private boolean isUnavailable(GroupData.InviteRow invite) {
         Instant now = clock.instant();
-        return invite.expiresAt() != null && !invite.expiresAt().isAfter(now)
-                || invite.maxUses() != null && invite.usedCount() >= invite.maxUses();
+        boolean expired = invite.expiresAt() != null && !invite.expiresAt().isAfter(now);
+        boolean fullyUsed = invite.maxUses() != null
+                && invite.usedCount() >= invite.maxUses();
+        return expired || fullyUsed;
     }
 
     private String normalizeDescription(String description) {
@@ -246,6 +289,14 @@ public class GroupServiceImpl implements GroupService {
                 HttpStatus.BAD_REQUEST,
                 "INVALID_INVITE_CODE",
                 "The invite code is invalid or no longer available."
+        );
+    }
+
+    private ApiException memberNotFoundException() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND,
+                "GROUP_MEMBER_NOT_FOUND",
+                "The group member was not found."
         );
     }
 }
