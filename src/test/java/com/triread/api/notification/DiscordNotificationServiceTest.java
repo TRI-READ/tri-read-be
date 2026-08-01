@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -48,6 +49,18 @@ class DiscordNotificationServiceTest {
         assertThat(service.notifyFailure("QUIZ_GENERATION", "failed", "detail")).isFalse();
 
         verify(webhookClient, times(1)).send(eq(WEBHOOK_URL), anyString());
+    }
+
+    @Test
+    void failedDeliveryDoesNotStartCooldown() {
+        doThrow(new IllegalStateException("delivery failed"))
+                .doNothing()
+                .when(webhookClient).send(eq(WEBHOOK_URL), anyString());
+
+        assertThat(service.notifyFailure("QUIZ_GENERATION", "failed", "detail")).isFalse();
+        assertThat(service.notifyFailure("QUIZ_GENERATION", "failed", "detail")).isTrue();
+
+        verify(webhookClient, times(2)).send(eq(WEBHOOK_URL), anyString());
     }
 
     @Test

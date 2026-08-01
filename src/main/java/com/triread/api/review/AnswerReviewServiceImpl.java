@@ -2,6 +2,7 @@ package com.triread.api.review;
 
 import com.triread.api.common.ApiException;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -28,9 +29,11 @@ public class AnswerReviewServiceImpl implements AnswerReviewService {
     public ReviewListResponse getReviews(long userId, String rawFilter) {
         String filter = normalizeFilter(rawFilter);
         AnswerReviewData.ReviewSummaryRow summary = answerReviewMapper.findSummary(userId);
-        List<ReviewItem> reviews = answerReviewMapper.findReviews(userId, filter).stream()
-                .map(ReviewItem::from)
-                .toList();
+        List<AnswerReviewData.ReviewRow> rows = answerReviewMapper.findReviews(userId, filter);
+        List<ReviewItem> reviews = new ArrayList<>();
+        for (AnswerReviewData.ReviewRow row : rows) {
+            reviews.add(ReviewItem.from(row));
+        }
 
         return new ReviewListResponse(
                 summary.totalCount(),
