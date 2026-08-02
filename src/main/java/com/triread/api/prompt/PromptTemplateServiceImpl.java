@@ -5,6 +5,7 @@ import com.triread.api.common.PageResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -32,14 +33,24 @@ public class PromptTemplateServiceImpl implements PromptTemplateService {
         int page = PageResponse.page(requestedPage);
         int size = PageResponse.size(requestedSize);
         long total = mapper.countVersions(promptType);
-        List<PromptVersion> versions = mapper.findVersions(promptType, page * size, size).stream()
-                .map(this::toVersion)
-                .toList();
+
+        List<PromptVersion> versions = new ArrayList<>();
+        for (PromptTemplateData.PromptRow row
+                : mapper.findVersions(promptType, page * size, size)) {
+            versions.add(toVersion(row));
+        }
+
+        List<Activation> activations = new ArrayList<>();
+        for (PromptTemplateData.ActivationRow row
+                : mapper.findRecentActivations(promptType, 20)) {
+            activations.add(toActivation(row));
+        }
+
         PromptTemplateData.PromptRow active = mapper.findActive(promptType);
         return new PromptPage(
                 PageResponse.of(versions, page, size, total),
                 active == null ? null : toVersion(active),
-                mapper.findRecentActivations(promptType, 20).stream().map(this::toActivation).toList()
+                activations
         );
     }
 
@@ -51,8 +62,11 @@ public class PromptTemplateServiceImpl implements PromptTemplateService {
         String content = normalizeContent(requestedContent);
         String changeNote = normalizeChangeNote(requestedChangeNote);
         mapper.lockPromptType(promptType);
+
+        int versionNumber = mapper.nextVersion(promptType);
+        String contentHash = hash(content);
         PromptTemplateData.PromptInsert insert = new PromptTemplateData.PromptInsert(
-                promptType, mapper.nextVersion(promptType), content, hash(content), changeNote, userId);
+                promptType, versionNumber, content, contentHash, changeNote, userId);
         mapper.insertTemplate(insert);
         return toVersion(requireVersion(insert.getId()));
     }
@@ -79,8 +93,7 @@ public class PromptTemplateServiceImpl implements PromptTemplateService {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ACTIVE_PROMPT_MISSING",
                     "An active " + promptType.toLowerCase(Locale.ROOT) + " prompt is required.");
         }
-        return new PromptSnapshot(row.promptTemplateId(), row.promptType(), row.versionNumber(),
-                row.content(), row.contentHash());
+        return toSnapshot(row);
     }
 
     private PromptTemplateData.PromptRow requireVersion(long promptTemplateId) {
@@ -133,6 +146,16 @@ public class PromptTemplateServiceImpl implements PromptTemplateService {
         return new PromptVersion(row.promptTemplateId(), row.promptType(), row.versionNumber(),
                 row.content(), row.contentHash(), row.changeNote(), row.createdByUserId(),
                 row.createdByName(), row.createdAt(), row.status(), row.lastActivatedAt());
+    }
+
+    private PromptSnapshot toSnapshot(PromptTemplateData.PromptRow row) {
+        return new PromptSnapshot(
+                row.promptTemplateId(),
+                row.promptType(),
+                row.versionNumber(),
+                row.content(),
+                row.contentHash()
+        );
     }
 
     private Activation toActivation(PromptTemplateData.ActivationRow row) {

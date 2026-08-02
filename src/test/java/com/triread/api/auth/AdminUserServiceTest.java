@@ -84,6 +84,18 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void preservesLastAdministratorWhenDisablingAccount() {
+        AdminUserService service = service();
+        when(authMapper.findById(2L)).thenReturn(user(2L, "owner", "ADMIN"));
+        when(authMapper.countEnabledAdmins()).thenReturn(1);
+
+        assertThatThrownBy(() -> service.updateEnabled(1L, 2L, false))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("LAST_ADMIN_REQUIRED"));
+        verify(authMapper, never()).updateEnabled(2L, false);
+    }
+
+    @Test
     void disablesUserAndInvalidatesExistingSessions() {
         AdminUserService service = service();
         when(authMapper.findById(2L)).thenReturn(user(2L, "reader", "USER"));
@@ -129,6 +141,29 @@ class AdminUserServiceTest {
         assertThat(service.resetPin(2L, "5678")).isEqualTo(3);
         verify(authMapper).updatePinHash(2L, "new-hashed-pin");
         verify(sessionInvalidationService).invalidateUser(2L);
+    }
+
+    @Test
+    void rejectsPinResetForDisabledUser() {
+        AdminUserService service = service();
+        AuthUser disabledUser = user(2L, "reader", "USER");
+        disabledUser.setEnabled(false);
+        when(authMapper.findById(2L)).thenReturn(disabledUser);
+
+        assertThatThrownBy(() -> service.resetPin(2L, "5678"))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("USER_DISABLED"));
+        verify(passwordEncoder, never()).encode("5678");
+    }
+
+    @Test
+    void rejectsUnknownRole() {
+        AdminUserService service = service();
+
+        assertThatThrownBy(() -> service.updateRole(1L, 2L, "manager"))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo("INVALID_APP_ROLE"));
+        verify(authMapper, never()).findById(2L);
     }
 
     private AuthUser user(long id, String loginName, String role) {

@@ -44,7 +44,8 @@ public class AdminUserService {
         AuthUser user = requireEnabledUser(userId);
         validateRoleChange(currentAdminId, user, newRole);
 
-        if (newRole.equals(user.getAppRole())) {
+        boolean roleChanged = !newRole.equals(user.getAppRole());
+        if (!roleChanged) {
             return UserSummary.from(user);
         }
 
@@ -57,7 +58,8 @@ public class AdminUserService {
         AuthUser user = requireUser(userId);
         validateStatusChange(currentAdminId, user, enabled);
 
-        if (user.isEnabled() == enabled) {
+        boolean statusChanged = user.isEnabled() != enabled;
+        if (!statusChanged) {
             return UserSummary.from(user);
         }
 

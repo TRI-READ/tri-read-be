@@ -32,8 +32,9 @@ public class AdminSecurityController {
     public UnlockResult unlock(@AuthenticationPrincipal AuthPrincipal principal,
                                @PathVariable @NotBlank String loginName) {
         int cleared = loginAttemptService.clearLogin(loginName);
+        Map<String, Object> details = Map.of("clearedEntries", cleared);
         auditService.record(principal.userId(), "LOGIN_LOCK_CLEARED", "USER", loginName,
-                Map.of("clearedEntries", cleared));
+                details);
         return new UnlockResult(cleared);
     }
 

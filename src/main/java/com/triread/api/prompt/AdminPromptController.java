@@ -43,11 +43,18 @@ public class AdminPromptController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CreatePromptRequest request
     ) {
-        PromptTemplateService.PromptVersion created = service.createVersion(principal.userId(), request.promptType(),
-                request.content(), request.changeNote());
+        PromptTemplateService.PromptVersion created = service.createVersion(
+                principal.userId(),
+                request.promptType(),
+                request.content(),
+                request.changeNote()
+        );
+        Map<String, Object> details = Map.of(
+                "promptType", created.promptType(),
+                "version", created.versionNumber()
+        );
         auditService.record(principal.userId(), "PROMPT_VERSION_CREATED", "PROMPT",
-                created.promptTemplateId(), Map.of("promptType", created.promptType(),
-                        "version", created.versionNumber()));
+                created.promptTemplateId(), details);
         return created;
     }
 
@@ -56,10 +63,16 @@ public class AdminPromptController {
             @AuthenticationPrincipal AuthPrincipal principal,
             @PathVariable long promptTemplateId
     ) {
-        PromptTemplateService.PromptVersion activated = service.activate(principal.userId(), promptTemplateId);
+        PromptTemplateService.PromptVersion activated = service.activate(
+                principal.userId(),
+                promptTemplateId
+        );
+        Map<String, Object> details = Map.of(
+                "promptType", activated.promptType(),
+                "version", activated.versionNumber()
+        );
         auditService.record(principal.userId(), "PROMPT_VERSION_ACTIVATED", "PROMPT",
-                promptTemplateId, Map.of("promptType", activated.promptType(),
-                        "version", activated.versionNumber()));
+                promptTemplateId, details);
         return activated;
     }
 
