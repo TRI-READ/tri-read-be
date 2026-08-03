@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import com.triread.api.audit.AdminAuditService;
@@ -42,44 +43,100 @@ public class AdminQuizController {
     ) {
         return service.getQuizzes(page, size);
     }
-    @GetMapping("/{quizSetId}") public AdminQuizService.QuizDetail detail(@Positive @PathVariable long quizSetId) { return service.getQuiz(quizSetId); }
-    @PostMapping public ResponseEntity<AdminQuizService.QuizDetail> create(
-            @AuthenticationPrincipal AuthPrincipal principal, @Valid @RequestBody CreateQuizRequest request) {
+
+    @GetMapping("/{quizSetId}")
+    public AdminQuizService.QuizDetail detail(@Positive @PathVariable long quizSetId) {
+        return service.getQuiz(quizSetId);
+    }
+
+    @PostMapping
+    public ResponseEntity<AdminQuizService.QuizDetail> create(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody CreateQuizRequest request
+    ) {
         AdminQuizService.QuizDetail created = service.createDraft(toCommand(request));
         auditService.record(principal.userId(), "QUIZ_DRAFT_CREATED", "QUIZ_SET",
                 created.quiz().quizSetId(), Map.of("challengeDate", request.challengeDate().toString()));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
-    @PutMapping("/{quizSetId}") public AdminQuizService.QuizDetail update(
-            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId,
-            @Valid @RequestBody CreateQuizRequest request) {
+
+    @PutMapping("/{quizSetId}")
+    public AdminQuizService.QuizDetail update(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Positive @PathVariable long quizSetId,
+            @Valid @RequestBody CreateQuizRequest request
+    ) {
         AdminQuizService.QuizDetail updated = service.updateDraft(quizSetId, toCommand(request));
         auditService.record(principal.userId(), "QUIZ_DRAFT_UPDATED", "QUIZ_SET", quizSetId, Map.of());
         return updated;
     }
-    @DeleteMapping("/{quizSetId}") public ResponseEntity<Void> delete(
-            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId) {
+
+    @DeleteMapping("/{quizSetId}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Positive @PathVariable long quizSetId
+    ) {
         service.deleteDraft(quizSetId);
         auditService.record(principal.userId(), "QUIZ_DRAFT_DELETED", "QUIZ_SET", quizSetId, Map.of());
         return ResponseEntity.noContent().build();
     }
-    @PostMapping("/{quizSetId}/publish") public AdminQuizService.QuizDetail publish(
-            @AuthenticationPrincipal AuthPrincipal principal, @Positive @PathVariable long quizSetId) {
+
+    @PostMapping("/{quizSetId}/publish")
+    public AdminQuizService.QuizDetail publish(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Positive @PathVariable long quizSetId
+    ) {
         AdminQuizService.QuizDetail published = service.publish(quizSetId);
         auditService.record(principal.userId(), "QUIZ_PUBLISHED", "QUIZ_SET", quizSetId, Map.of());
         return published;
     }
 
     private AdminQuizService.CreateQuiz toCommand(CreateQuizRequest request) {
-        return new AdminQuizService.CreateQuiz(request.challengeDate(), request.passages().stream().map(p ->
-                new AdminQuizService.CreatePassage(p.title(), p.topic(), p.content(), p.questions().stream().map(q ->
-                        new AdminQuizService.CreateQuestion(q.content(), q.options(), q.correctOptionPosition(), q.explanation(), q.evidence())
-                ).toList())).toList());
+        List<AdminQuizService.CreatePassage> passages = new ArrayList<>();
+
+        for (PassageRequest passage : request.passages()) {
+            List<AdminQuizService.CreateQuestion> questions = new ArrayList<>();
+            for (QuestionRequest question : passage.questions()) {
+                questions.add(new AdminQuizService.CreateQuestion(
+                        question.content(),
+                        question.options(),
+                        question.correctOptionPosition(),
+                        question.explanation(),
+                        question.evidence()
+                ));
+            }
+
+            passages.add(new AdminQuizService.CreatePassage(
+                    passage.title(),
+                    passage.topic(),
+                    passage.content(),
+                    questions
+            ));
+        }
+
+        return new AdminQuizService.CreateQuiz(request.challengeDate(), passages);
     }
 
-    public record CreateQuizRequest(@NotNull LocalDate challengeDate, @NotNull @Size(min=3,max=3) List<@Valid PassageRequest> passages) {}
-    public record PassageRequest(@Size(max=300) String title, @Size(max=100) String topic, @NotBlank String content,
-                                 @NotNull @Size(min=3,max=3) List<@Valid QuestionRequest> questions) {}
-    public record QuestionRequest(@NotBlank String content, @NotNull @Size(min=4,max=4) List<@NotBlank String> options,
-                                  @Min(1) @Max(4) int correctOptionPosition, @NotBlank String explanation, String evidence) {}
+    public record CreateQuizRequest(
+            @NotNull LocalDate challengeDate,
+            @NotNull @Size(min = 3, max = 3) List<@Valid PassageRequest> passages
+    ) {
+    }
+
+    public record PassageRequest(
+            @Size(max = 300) String title,
+            @Size(max = 100) String topic,
+            @NotBlank String content,
+            @NotNull @Size(min = 3, max = 3) List<@Valid QuestionRequest> questions
+    ) {
+    }
+
+    public record QuestionRequest(
+            @NotBlank String content,
+            @NotNull @Size(min = 4, max = 4) List<@NotBlank String> options,
+            @Min(1) @Max(4) int correctOptionPosition,
+            @NotBlank String explanation,
+            String evidence
+    ) {
+    }
 }

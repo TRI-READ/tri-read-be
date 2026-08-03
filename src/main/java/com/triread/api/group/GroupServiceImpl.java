@@ -51,18 +51,21 @@ public class GroupServiceImpl implements GroupService {
     @Override
     @Transactional(readOnly = true)
     public List<GroupSummary> getMyGroups(long userId) {
-        return groupMapper.findMyGroups(userId).stream()
-                .map(GroupSummary::from)
-                .toList();
+        List<GroupSummary> groups = new ArrayList<>();
+        for (GroupData.GroupRow row : groupMapper.findMyGroups(userId)) {
+            groups.add(GroupSummary.from(row));
+        }
+        return groups;
     }
 
     @Override
     @Transactional(readOnly = true)
     public GroupDetail getGroup(long groupId, long userId) {
         GroupData.GroupRow group = requireMemberGroup(groupId, userId);
-        List<GroupMember> members = groupMapper.findMembers(groupId).stream()
-                .map(GroupMember::from)
-                .toList();
+        List<GroupMember> members = new ArrayList<>();
+        for (GroupData.MemberRow row : groupMapper.findMembers(groupId)) {
+            members.add(GroupMember.from(row));
+        }
         return GroupDetail.from(group, members);
     }
 
@@ -95,7 +98,11 @@ public class GroupServiceImpl implements GroupService {
     @Transactional(readOnly = true)
     public List<InviteSummary> getInvites(long groupId, long userId) {
         requireOwnerGroup(groupId, userId);
-        return groupMapper.findInvites(groupId).stream().map(InviteSummary::from).toList();
+        List<InviteSummary> invites = new ArrayList<>();
+        for (GroupData.InviteManagementRow row : groupMapper.findInvites(groupId)) {
+            invites.add(InviteSummary.from(row));
+        }
+        return invites;
     }
 
     @Override

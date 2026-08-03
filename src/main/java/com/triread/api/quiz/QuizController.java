@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,12 +40,13 @@ public class QuizController {
             @Positive @PathVariable long quizSetId,
             @Valid @RequestBody SubmitAttemptRequest request
     ) {
-        List<QuizService.SubmittedAnswer> answers = request.answers().stream()
-                .map(answer -> new QuizService.SubmittedAnswer(
+        List<QuizService.SubmittedAnswer> answers = new ArrayList<>();
+        for (AnswerRequest answer : request.answers()) {
+            answers.add(new QuizService.SubmittedAnswer(
                         answer.questionId(),
                         answer.selectedOptionId()
-                ))
-                .toList();
+            ));
+        }
 
         QuizService.QuizResultResponse result =
                 quizService.submitAttempt(principal.userId(), quizSetId, answers);
