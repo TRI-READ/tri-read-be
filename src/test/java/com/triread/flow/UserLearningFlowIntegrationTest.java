@@ -2,6 +2,7 @@ package com.triread.flow;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.triread.api.TriReadApiApplication;
 import com.triread.api.auth.AuthService;
 import com.triread.api.orbit.OrbitService;
 import com.triread.api.quiz.QuizService;
@@ -27,7 +28,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-@SpringBootTest(properties = {
+@SpringBootTest(classes = TriReadApiApplication.class, properties = {
         "app.quiz-generation.enabled=false",
         "app.notifications.discord.enabled=false"
 })
