@@ -7,6 +7,7 @@ import com.triread.api.auth.AuthService;
 import com.triread.api.orbit.OrbitService;
 import com.triread.api.quiz.QuizService;
 import com.triread.api.review.AnswerReviewService;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -129,7 +130,7 @@ class UserLearningFlowIntegrationTest {
                         + "VALUES (?, 'PUBLISHED', 'A', ?) RETURNING id",
                 Long.class,
                 TODAY,
-                NOW
+                Timestamp.from(NOW)
         );
 
         List<Long> firstPassageQuestionIds = new ArrayList<>();
