@@ -6,6 +6,10 @@ on:
     - cron: "0 0 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: promote-dev-to-main
+  cancel-in-progress: false
+
 permissions:
   actions: write
   checks: read
@@ -72,20 +76,33 @@ jobs:
         shell: bash
         run: |
           for attempt in $(seq 1 30); do
-            CHECK_COUNT="$(gh pr view "${{ steps.pr.outputs.number }}" \
-              --json statusCheckRollup \
-              --jq '.statusCheckRollup | length')"
+            set +e
+            REQUIRED_CHECKS="$(gh pr checks "${{ steps.pr.outputs.number }}" \
+              --required \
+              --json name,state,bucket 2>/dev/null)"
+            CHECK_STATUS=$?
+            set -e
+
+            if [ -z "$REQUIRED_CHECKS" ]; then
+              REQUIRED_CHECKS='[]'
+            fi
+
+            CHECK_COUNT="$(printf '%s' "$REQUIRED_CHECKS" | jq 'length')"
 
             if [ "$CHECK_COUNT" -gt 0 ]; then
-              gh pr checks "${{ steps.pr.outputs.number }}" --watch --fail-fast
+              echo "Found $CHECK_COUNT required check(s). Waiting for completion."
+              gh pr checks "${{ steps.pr.outputs.number }}" \
+                --required \
+                --watch \
+                --interval 10
               exit 0
             fi
 
-            echo "Waiting for pull request checks to start ($attempt/30)..."
+            echo "Waiting for required pull request checks to start ($attempt/30, status=$CHECK_STATUS)..."
             sleep 10
           done
 
-          echo "No pull request checks started within the timeout." >&2
+          echo "No required pull request checks started within the timeout." >&2
           exit 1
 
       - name: Merge promotion pull request
@@ -103,13 +120,12 @@ jobs:
         run: |
           git fetch origin main
           MAIN_SHA="$(git rev-parse origin/main)"
-          gh workflow run ci.yml --ref main
 
           for attempt in $(seq 1 30); do
             RUN_ID="$(gh run list \
               --workflow ci.yml \
               --branch main \
-              --event workflow_dispatch \
+              --event push \
               --limit 20 \
               --json databaseId,headSha \
               --jq ".[] | select(.headSha == \"$MAIN_SHA\") | .databaseId" \
