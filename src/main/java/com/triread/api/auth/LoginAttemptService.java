@@ -4,8 +4,10 @@ import com.triread.api.common.ApiException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,19 +56,15 @@ public class LoginAttemptService {
 
     public void recordFailure(String clientAddress, String loginName) {
         Instant now = clock.instant();
-        removeExpired(now);
+        if (attempts.size() >= 100) {
+            removeExpired(now);
+        }
         String key = key(clientAddress, loginName);
         if (!attempts.containsKey(key) && attempts.size() >= MAX_TRACKED_KEYS) {
             throw rateLimited();
         }
-        attempts.compute(key, (ignored, current) -> {
-            if (current == null || current.expiresAt().isBefore(now)) {
-                return new AttemptWindow(1, now.plus(window), normalizeAddress(clientAddress),
-                        normalizeLogin(loginName));
-            }
-            return new AttemptWindow(current.failures() + 1, current.expiresAt(),
-                    current.clientAddress(), current.loginName());
-        });
+        attempts.compute(key, (ignored, current) ->
+                nextAttempt(current, clientAddress, loginName, now));
     }
 
     public void recordSuccess(String clientAddress, String loginName) {
@@ -75,13 +73,16 @@ public class LoginAttemptService {
 
     public List<LoginLockSummary> getLockedAttempts() {
         Instant now = clock.instant();
-        attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
-        return attempts.values().stream()
-                .filter(attempt -> attempt.failures() >= maxFailures)
-                .map(attempt -> new LoginLockSummary(attempt.loginName(),
-                        maskAddress(attempt.clientAddress()), attempt.failures(), attempt.expiresAt()))
-                .sorted((left, right) -> right.expiresAt().compareTo(left.expiresAt()))
-                .toList();
+        removeExpired(now);
+
+        List<LoginLockSummary> lockedAttempts = new ArrayList<>();
+        for (AttemptWindow attempt : attempts.values()) {
+            if (attempt.failures() >= maxFailures) {
+                lockedAttempts.add(toSummary(attempt));
+            }
+        }
+        lockedAttempts.sort(Comparator.comparing(LoginLockSummary::expiresAt).reversed());
+        return lockedAttempts;
     }
 
     public int clearLogin(String loginName) {
@@ -92,10 +93,38 @@ public class LoginAttemptService {
     }
 
     private void removeExpired(Instant now) {
-        if (attempts.size() < 100) {
-            return;
-        }
         attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
+    }
+
+    private AttemptWindow nextAttempt(
+            AttemptWindow current,
+            String clientAddress,
+            String loginName,
+            Instant now
+    ) {
+        if (current == null || current.expiresAt().isBefore(now)) {
+            return new AttemptWindow(
+                    1,
+                    now.plus(window),
+                    normalizeAddress(clientAddress),
+                    normalizeLogin(loginName)
+            );
+        }
+        return new AttemptWindow(
+                current.failures() + 1,
+                current.expiresAt(),
+                current.clientAddress(),
+                current.loginName()
+        );
+    }
+
+    private LoginLockSummary toSummary(AttemptWindow attempt) {
+        return new LoginLockSummary(
+                attempt.loginName(),
+                maskAddress(attempt.clientAddress()),
+                attempt.failures(),
+                attempt.expiresAt()
+        );
     }
 
     private String key(String clientAddress, String loginName) {
@@ -111,12 +140,21 @@ public class LoginAttemptService {
     }
 
     private String maskAddress(String address) {
-        if (address == null || address.isBlank() || "unknown".equals(address)) return "unknown";
+        if (address == null || address.isBlank() || "unknown".equals(address)) {
+            return "unknown";
+        }
         if (address.contains(".")) {
             String[] parts = address.split("\\.");
-            return parts.length == 4 ? parts[0] + "." + parts[1] + ".***.***" : "masked";
+            if (parts.length == 4) {
+                return parts[0] + "." + parts[1] + ".***.***";
+            }
+            return "masked";
         }
-        return address.contains(":") ? address.substring(0, Math.min(4, address.length())) + ":***" : "masked";
+        if (address.contains(":")) {
+            int visibleLength = Math.min(4, address.length());
+            return address.substring(0, visibleLength) + ":***";
+        }
+        return "masked";
     }
 
     private ApiException rateLimited() {

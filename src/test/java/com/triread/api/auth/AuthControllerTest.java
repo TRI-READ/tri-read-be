@@ -11,7 +11,6 @@ import com.triread.api.common.ApiException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
@@ -44,14 +43,13 @@ class AuthControllerTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        ResponseEntity<AuthController.AuthResponse> result = authController.signup(
+        AuthController.AuthResponse result = authController.signup(
                 new AuthController.SignupRequest("reader", "Reader", "1234"),
                 request,
                 response
         );
 
-        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(result.getBody()).isEqualTo(
+        assertThat(result).isEqualTo(
                 new AuthController.AuthResponse(3L, "reader", "Reader", "USER")
         );
 
@@ -92,13 +90,12 @@ class AuthControllerTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = (MockHttpSession) request.getSession(true);
 
-        ResponseEntity<Void> result = authController.changePin(
+        authController.changePin(
                 principal,
                 new AuthController.ChangePinRequest("1234", "5678"),
                 request
         );
 
-        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(session.isInvalid()).isTrue();
         verify(authService).changePin(3L, "1234", "5678");
         verify(sessionInvalidationService).invalidateUser(3L);

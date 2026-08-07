@@ -1,12 +1,15 @@
 package com.triread.api.prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.triread.api.common.ApiException;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -89,6 +92,48 @@ class PromptTemplateServiceImplTest {
         assertThat(result.generation().promptTemplateId()).isEqualTo(11L);
         assertThat(result.validation().promptTemplateId()).isEqualTo(12L);
         assertThat(result.versionLabel()).isEqualTo("g3/v5");
+    }
+
+    @Test
+    void listsVersionsAndRecentActivationHistory() {
+        PromptTemplateData.PromptRow version = row(
+                31L, "GENERATION", 3, "generate", "ACTIVE", NOW);
+        PromptTemplateData.ActivationRow activation =
+                new PromptTemplateData.ActivationRow(
+                        5L, 31L, 3, 7L, "admin", NOW);
+        when(mapper.countVersions("GENERATION")).thenReturn(1L);
+        when(mapper.findVersions("GENERATION", 0, 8)).thenReturn(List.of(version));
+        when(mapper.findActive("GENERATION")).thenReturn(version);
+        when(mapper.findRecentActivations("GENERATION", 20))
+                .thenReturn(List.of(activation));
+
+        PromptTemplateService.PromptPage result =
+                service.getVersions(" generation ", 0, 8);
+
+        assertThat(result.page().items()).hasSize(1);
+        assertThat(result.active().promptTemplateId()).isEqualTo(31L);
+        assertThat(result.recentActivations()).singleElement().satisfies(item ->
+                assertThat(item.activationId()).isEqualTo(5L));
+    }
+
+    @Test
+    void rejectsUnknownPromptTypeBeforeQueryingDatabase() {
+        assertThatThrownBy(() -> service.getVersions("summary", 0, 8))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("PROMPT_TYPE_INVALID"));
+        verify(mapper, never()).countVersions("summary");
+    }
+
+    @Test
+    void requiresActivePromptForGeneration() {
+        when(mapper.findActive("GENERATION")).thenReturn(null);
+
+        assertThatThrownBy(service::getActivePrompts)
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("ACTIVE_PROMPT_MISSING"));
+        verify(mapper, never()).findActive("VALIDATION");
     }
 
     private PromptTemplateData.PromptRow row(long id, String type, int version,

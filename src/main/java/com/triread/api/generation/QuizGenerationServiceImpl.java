@@ -61,9 +61,11 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             return generateInternal(targetDate);
         } catch (RuntimeException exception) {
             if (shouldNotifyFailure(exception)) {
-                notificationService.notifyFailure("QUIZ_GENERATION",
+                notificationService.notifyFailure(
+                        "QUIZ_GENERATION",
                         "퀴즈 생성 최종 실패",
-                        "대상 날짜: " + targetDate + "\n오류: " + errorSummary(exception));
+                        "대상 날짜: " + targetDate + "\n오류: " + errorSummary(exception)
+                );
             }
             throw exception;
         }
@@ -163,78 +165,164 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                 if (!passes(validation)) {
                     repairIssues = validation.issues();
                     latestError = summarize(validation);
-                    boolean finalAttempt = attempt == maxAttempts;
-                    updateLog(logId, null,
-                            finalAttempt ? "FAILED" : "RETRYING",
-                            attempt, validation.score(), latestRaw, latestError,
-                            finalAttempt ? clock.instant() : null);
+                    recordValidationFailure(
+                            logId, attempt, maxAttempts, validation,
+                            latestRaw, latestError);
                     continue;
                 }
 
-                AdminQuizService.QuizDetail quiz =
-                        adminQuizService.createReviewedDraft(
-                                candidate.toCreateQuiz(),
-                                aiGateway.provider(),
-                                aiGateway.generationModel(),
-                                prompts.versionLabel(),
-                                prompts.generation().promptTemplateId(),
-                                prompts.validation().promptTemplateId());
+                AdminQuizService.QuizDetail quiz = saveReviewedQuiz(candidate, prompts);
                 persistedQuizId = quiz.quiz().quizSetId();
-                if (sourceBrief.grounded()) {
-                    mapper.linkSourcesToQuiz(
-                            persistedQuizId, sourceBrief.sourceBriefId());
-                }
-
-                boolean autoPublished =
-                        properties.isAutoPublish() && sourceBrief.grounded();
-                if (autoPublished) {
-                    quiz = adminQuizService.publish(persistedQuizId);
-                }
-
-                String status = autoPublished ? "PUBLISHED" : "READY";
-                updateLog(logId, persistedQuizId, status, attempt,
-                        validation.score(), latestRaw, null, clock.instant());
-                return new GenerationResult(
-                        logId, status, attempt, validation.score(),
-                        autoPublished, quiz);
+                return finishGeneration(
+                        logId, attempt, validation, latestRaw,
+                        sourceBrief, persistedQuizId, quiz);
             } catch (ApiException exception) {
-                latestError = exception.getCode() + ": " + exception.getMessage();
-                if (persistedQuizId != null) {
-                    updateLog(logId, persistedQuizId, "FAILED", attempt,
-                            null, latestRaw, latestError, clock.instant());
-                    throw exception;
-                }
-                boolean terminalError =
-                        exception.getCode().endsWith("_API_KEY_MISSING")
-                                || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED"
-                                .equals(exception.getCode());
-                boolean finalAttempt = attempt == maxAttempts || terminalError;
-                updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
-                        null, latestRaw, latestError,
-                        finalAttempt ? clock.instant() : null);
-                if (terminalError) {
-                    throw exception;
-                }
-                if (!finalAttempt && isTransient(exception)) {
-                    waitBeforeRetry(attempt);
-                }
+                latestError = errorSummary(exception);
+                recordApiFailure(
+                        logId, persistedQuizId, attempt, maxAttempts,
+                        latestRaw, latestError, exception);
             } catch (RuntimeException exception) {
-                latestError =
-                        exception.getClass().getSimpleName() + ": " + exception.getMessage();
-                if (persistedQuizId != null) {
-                    updateLog(logId, persistedQuizId, "FAILED", attempt,
-                            null, latestRaw, latestError, clock.instant());
-                    throw exception;
-                }
-                boolean finalAttempt = attempt == maxAttempts;
-                updateLog(logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
-                        null, latestRaw, latestError,
-                        finalAttempt ? clock.instant() : null);
+                latestError = errorSummary(exception);
+                recordUnexpectedFailure(
+                        logId, persistedQuizId, attempt, maxAttempts,
+                        latestRaw, latestError, exception);
             }
         }
 
         throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUIZ_GENERATION_FAILED",
                 "Quiz generation failed after " + maxAttempts + " attempts. " + latestError);
+    }
+
+    private void recordValidationFailure(
+            long logId,
+            int attempt,
+            int maxAttempts,
+            QuizValidation.Result validation,
+            String raw,
+            String error
+    ) {
+        boolean finalAttempt = attempt == maxAttempts;
+        updateLog(
+                logId,
+                null,
+                finalAttempt ? "FAILED" : "RETRYING",
+                attempt,
+                validation.score(),
+                raw,
+                error,
+                finalAttempt ? clock.instant() : null
+        );
+    }
+
+    private AdminQuizService.QuizDetail saveReviewedQuiz(
+            QuizGenerationData.GeneratedQuiz candidate,
+            PromptTemplateService.ActivePrompts prompts
+    ) {
+        return adminQuizService.createReviewedDraft(
+                candidate.toCreateQuiz(),
+                aiGateway.provider(),
+                aiGateway.generationModel(),
+                prompts.versionLabel(),
+                prompts.generation().promptTemplateId(),
+                prompts.validation().promptTemplateId()
+        );
+    }
+
+    private GenerationResult finishGeneration(
+            long logId,
+            int attempt,
+            QuizValidation.Result validation,
+            String raw,
+            QuizGenerationData.SourceBrief sourceBrief,
+            long quizSetId,
+            AdminQuizService.QuizDetail quiz
+    ) {
+        if (sourceBrief.grounded()) {
+            mapper.linkSourcesToQuiz(quizSetId, sourceBrief.sourceBriefId());
+        }
+
+        boolean autoPublished = properties.isAutoPublish() && sourceBrief.grounded();
+        if (autoPublished) {
+            quiz = adminQuizService.publish(quizSetId);
+        }
+
+        String status = autoPublished ? "PUBLISHED" : "READY";
+        updateLog(
+                logId, quizSetId, status, attempt,
+                validation.score(), raw, null, clock.instant()
+        );
+        return new GenerationResult(
+                logId, status, attempt, validation.score(), autoPublished, quiz
+        );
+    }
+
+    private void recordApiFailure(
+            long logId,
+            Long quizSetId,
+            int attempt,
+            int maxAttempts,
+            String raw,
+            String error,
+            ApiException exception
+    ) {
+        if (quizSetId != null) {
+            recordSavedQuizFailure(logId, quizSetId, attempt, raw, error);
+            throw exception;
+        }
+
+        boolean terminalError = isTerminal(exception);
+        boolean finalAttempt = attempt == maxAttempts || terminalError;
+        updateLog(
+                logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
+                null, raw, error, finalAttempt ? clock.instant() : null
+        );
+
+        if (terminalError) {
+            throw exception;
+        }
+        if (!finalAttempt && isTransient(exception)) {
+            waitBeforeRetry(attempt);
+        }
+    }
+
+    private void recordUnexpectedFailure(
+            long logId,
+            Long quizSetId,
+            int attempt,
+            int maxAttempts,
+            String raw,
+            String error,
+            RuntimeException exception
+    ) {
+        if (quizSetId != null) {
+            recordSavedQuizFailure(logId, quizSetId, attempt, raw, error);
+            throw exception;
+        }
+
+        boolean finalAttempt = attempt == maxAttempts;
+        updateLog(
+                logId, null, finalAttempt ? "FAILED" : "RETRYING", attempt,
+                null, raw, error, finalAttempt ? clock.instant() : null
+        );
+    }
+
+    private void recordSavedQuizFailure(
+            long logId,
+            long quizSetId,
+            int attempt,
+            String raw,
+            String error
+    ) {
+        updateLog(
+                logId, quizSetId, "FAILED", attempt,
+                null, raw, error, clock.instant()
+        );
+    }
+
+    private boolean isTerminal(ApiException exception) {
+        return exception.getCode().endsWith("_API_KEY_MISSING")
+                || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED"
+                .equals(exception.getCode());
     }
 
     private QuizValidation.Result validateCandidate(

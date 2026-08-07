@@ -6,10 +6,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.temporal.TemporalAdjusters;
-import java.util.List;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -49,12 +48,9 @@ public class OrbitServiceImpl implements OrbitService {
                 queryStart, queryEnd, attempts
         );
 
-        List<OrbitDay> days = startDate.datesUntil(endDate.plusDays(1))
-                .filter(this::isWeekday)
-                .map(date -> toOrbitDay(date, assignedAttempts.get(date)))
-                .toList();
-        int completedDays = (int) days.stream().filter(day -> day.score() != null).count();
-        int fullyLitDays = (int) days.stream().filter(day -> "LIT".equals(day.status())).count();
+        List<OrbitDay> days = createOrbitDays(startDate, endDate, assignedAttempts);
+        int completedDays = countCompletedDays(days);
+        int fullyLitDays = countFullyLitDays(days);
 
         return new OrbitResponse(period, startDate, endDate, completedDays, fullyLitDays, days);
     }
@@ -76,8 +72,7 @@ public class OrbitServiceImpl implements OrbitService {
         Map<LocalDate, OrbitData.OrbitAttemptRow> assignedAttempts = assignWeekendAttempts(
                 queryStart, queryEnd, attempts
         );
-        boolean completedToday = attempts.stream()
-                .anyMatch(attempt -> today.equals(attempt.completedDate()));
+        boolean completedToday = hasCompletedOn(today, attempts);
         LocalDate cursor = isWeekday(today) && assignedAttempts.containsKey(today)
                 ? today
                 : previousWeekday(today);
@@ -88,6 +83,54 @@ public class OrbitServiceImpl implements OrbitService {
         }
 
         return new StreakResponse(currentStreak, completedToday);
+    }
+
+    private List<OrbitDay> createOrbitDays(
+            LocalDate startDate,
+            LocalDate endDate,
+            Map<LocalDate, OrbitData.OrbitAttemptRow> assignedAttempts
+    ) {
+        List<OrbitDay> days = new ArrayList<>();
+        LocalDate date = startDate;
+        while (!date.isAfter(endDate)) {
+            if (isWeekday(date)) {
+                days.add(toOrbitDay(date, assignedAttempts.get(date)));
+            }
+            date = date.plusDays(1);
+        }
+        return days;
+    }
+
+    private int countCompletedDays(List<OrbitDay> days) {
+        int count = 0;
+        for (OrbitDay day : days) {
+            if (day.score() != null) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int countFullyLitDays(List<OrbitDay> days) {
+        int count = 0;
+        for (OrbitDay day : days) {
+            if ("LIT".equals(day.status())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private boolean hasCompletedOn(
+            LocalDate date,
+            List<OrbitData.OrbitAttemptRow> attempts
+    ) {
+        for (OrbitData.OrbitAttemptRow attempt : attempts) {
+            if (date.equals(attempt.completedDate())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private OrbitDay toOrbitDay(LocalDate date, OrbitData.OrbitAttemptRow attempt) {
@@ -110,29 +153,57 @@ public class OrbitServiceImpl implements OrbitService {
             List<OrbitData.OrbitAttemptRow> attempts
     ) {
         Map<LocalDate, OrbitData.OrbitAttemptRow> assigned = new LinkedHashMap<>();
-        attempts.stream()
-                .filter(attempt -> isWeekday(attempt.challengeDate()))
-                .forEach(attempt -> assigned.put(attempt.challengeDate(), attempt));
-
         Map<LocalDate, List<OrbitData.OrbitAttemptRow>> weekendAttemptsByWeek = new LinkedHashMap<>();
-        attempts.stream()
-                .filter(attempt -> !isWeekday(attempt.challengeDate()))
-                .sorted(Comparator.comparing(OrbitData.OrbitAttemptRow::challengeDate))
-                .forEach(attempt -> weekendAttemptsByWeek
-                        .computeIfAbsent(weekMonday(attempt.challengeDate()), ignored -> new ArrayList<>())
-                        .add(attempt));
+        for (OrbitData.OrbitAttemptRow attempt : attempts) {
+            if (isWeekday(attempt.challengeDate())) {
+                assigned.put(attempt.challengeDate(), attempt);
+            } else {
+                addWeekendAttempt(weekendAttemptsByWeek, attempt);
+            }
+        }
 
         for (Map.Entry<LocalDate, List<OrbitData.OrbitAttemptRow>> entry
                 : weekendAttemptsByWeek.entrySet()) {
-            List<LocalDate> emptyWeekdays = entry.getKey().datesUntil(entry.getKey().plusDays(5))
-                    .filter(date -> !date.isBefore(queryStart) && !date.isAfter(queryEnd))
-                    .filter(date -> !assigned.containsKey(date))
-                    .toList();
-            for (int index = 0; index < Math.min(emptyWeekdays.size(), entry.getValue().size()); index++) {
+            entry.getValue().sort((first, second) ->
+                    first.challengeDate().compareTo(second.challengeDate()));
+            List<LocalDate> emptyWeekdays = findEmptyWeekdays(
+                    entry.getKey(), queryStart, queryEnd, assigned);
+            int assignmentCount = Math.min(emptyWeekdays.size(), entry.getValue().size());
+            for (int index = 0; index < assignmentCount; index++) {
                 assigned.put(emptyWeekdays.get(index), entry.getValue().get(index));
             }
         }
         return assigned;
+    }
+
+    private void addWeekendAttempt(
+            Map<LocalDate, List<OrbitData.OrbitAttemptRow>> attemptsByWeek,
+            OrbitData.OrbitAttemptRow attempt
+    ) {
+        LocalDate monday = weekMonday(attempt.challengeDate());
+        List<OrbitData.OrbitAttemptRow> weekAttempts = attemptsByWeek.get(monday);
+        if (weekAttempts == null) {
+            weekAttempts = new ArrayList<>();
+            attemptsByWeek.put(monday, weekAttempts);
+        }
+        weekAttempts.add(attempt);
+    }
+
+    private List<LocalDate> findEmptyWeekdays(
+            LocalDate monday,
+            LocalDate queryStart,
+            LocalDate queryEnd,
+            Map<LocalDate, OrbitData.OrbitAttemptRow> assigned
+    ) {
+        List<LocalDate> emptyWeekdays = new ArrayList<>();
+        for (int day = 0; day < 5; day++) {
+            LocalDate date = monday.plusDays(day);
+            boolean insideQuery = !date.isBefore(queryStart) && !date.isAfter(queryEnd);
+            if (insideQuery && !assigned.containsKey(date)) {
+                emptyWeekdays.add(date);
+            }
+        }
+        return emptyWeekdays;
     }
 
     private LocalDate weekMonday(LocalDate date) {

@@ -7,6 +7,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OperationsService {
+    private static final int RECENT_ITEM_LIMIT = 10;
+
     private final OperationsMapper mapper;
     private final LoginAttemptService loginAttemptService;
     private final QuizGenerationProperties properties;
@@ -38,16 +41,30 @@ public class OperationsService {
         Instant qualityFrom = today.minusDays(6).atStartOfDay(clock.getZone()).toInstant();
         long uptime = ManagementFactory.getRuntimeMXBean().getUptime() / 1000;
         Instant startedAt = clock.instant().minusSeconds(uptime);
+
+        OperationsData.AiStats aiStats = mapper.aiStats(from, until);
+        List<OperationsData.ErrorCount> aiErrors = mapper.aiErrors(from, until);
+        OperationsData.QualityStats qualityStats = mapper.qualityStats(qualityFrom);
+        List<OperationsData.InventoryRow> inventory = mapper.inventory(
+                today,
+                today.plusDays(6),
+                Math.max(1, properties.getVariantsPerDate())
+        );
+        List<OperationsData.FailureRow> recentFailures =
+                mapper.recentFailures(RECENT_ITEM_LIMIT);
+        List<OperationsData.AuditRow> recentAdminActions =
+                mapper.recentAdminActions(RECENT_ITEM_LIMIT);
+        int lockedLoginAttempts = loginAttemptService.getLockedAttempts().size();
+        OperationsData.OperationEventRow lastSchedulerRun =
+                mapper.lastEvent("QUIZ_SCHEDULER");
+        OperationsData.OperationEventRow lastBackup = mapper.lastEvent("DB_BACKUP");
+
         return new OperationsData.Summary(
                 "UP", "UP", mapper.databaseSizeBytes(), uptime, version, startedAt,
-                mapper.aiStats(from, until), mapper.aiErrors(from, until),
-                mapper.qualityStats(qualityFrom),
-                mapper.inventory(today, today.plusDays(6),
-                        Math.max(1, properties.getVariantsPerDate())),
-                mapper.recentFailures(10), mapper.recentAdminActions(10),
-                loginAttemptService.getLockedAttempts().size(),
-                mapper.lastEvent("QUIZ_SCHEDULER"), nextRun(properties.getCron()),
-                mapper.lastEvent("DB_BACKUP"), mapper.countGroundedBriefs(),
+                aiStats, aiErrors, qualityStats, inventory,
+                recentFailures, recentAdminActions, lockedLoginAttempts,
+                lastSchedulerRun, nextRun(properties.getCron()),
+                lastBackup, mapper.countGroundedBriefs(),
                 mapper.countGroundedSources());
     }
 
@@ -59,7 +76,8 @@ public class OperationsService {
     }
 
     public void completeEvent(long eventId, boolean success, String message) {
-        mapper.completeEvent(eventId, success ? "SUCCESS" : "FAILED", message, clock.instant());
+        String status = success ? "SUCCESS" : "FAILED";
+        mapper.completeEvent(eventId, status, message, clock.instant());
     }
 
     private Instant nextRun(String cron) {

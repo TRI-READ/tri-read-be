@@ -43,8 +43,9 @@ public class AdminUserController {
     ) {
         AdminUserService.UserSummary updated = service.updateRole(
                 principal.userId(), userId, request.role());
+        Map<String, Object> details = Map.of("role", updated.role());
         auditService.record(principal.userId(), "USER_ROLE_UPDATED", "USER", userId,
-                Map.of("role", updated.role()));
+                details);
         return updated;
     }
 
@@ -56,8 +57,9 @@ public class AdminUserController {
     ) {
         AdminUserService.UserSummary updated = service.updateEnabled(
                 principal.userId(), userId, request.enabled());
+        Map<String, Object> details = Map.of("enabled", updated.enabled());
         auditService.record(principal.userId(), "USER_STATUS_UPDATED", "USER", userId,
-                Map.of("enabled", updated.enabled()));
+                details);
         return updated;
     }
 
@@ -68,8 +70,9 @@ public class AdminUserController {
             @Valid @RequestBody ResetPinRequest request
     ) {
         int invalidatedSessions = service.resetPin(userId, request.newPin());
+        Map<String, Object> details = Map.of("invalidatedSessions", invalidatedSessions);
         auditService.record(principal.userId(), "USER_PIN_RESET", "USER", userId,
-                Map.of("invalidatedSessions", invalidatedSessions));
+                details);
     }
 
     public record UpdateRoleRequest(@NotBlank String role) {}

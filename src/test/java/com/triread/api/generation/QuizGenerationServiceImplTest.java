@@ -160,6 +160,8 @@ class QuizGenerationServiceImplTest {
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getCode())
                                 .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));
+        verify(mapper, never()).insertLog(any());
+        verify(aiGateway, never()).generate(any(LocalDate.class), anyList(), any());
     }
 
     @Test
@@ -195,6 +197,52 @@ class QuizGenerationServiceImplTest {
         verify(aiGateway).generate(eq(date), anyList(), eq(GENERATION_PROMPT));
         verify(aiGateway).repair(eq(generated), eq(failed.issues()), eq(GENERATION_PROMPT));
         verify(aiGateway, never()).validate(any(), any());
+    }
+
+    @Test
+    void failsAfterAiValidationRejectsEveryAttemptAndNotifiesOperations() {
+        LocalDate date = LocalDate.of(2026, 7, 20);
+        QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
+        QuizValidation.Result rulePassed = new QuizValidation.Result(true, 100, List.of());
+        QuizValidation.Result aiFailed = new QuizValidation.Result(false, 60, List.of(
+                new QuizValidation.Issue(
+                        "ERROR",
+                        "AMBIGUOUS_ANSWER",
+                        1,
+                        1,
+                        "More than one option can be correct"
+                )
+        ));
+
+        when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT)))
+                .thenReturn(generated);
+        when(aiGateway.repair(eq(generated), eq(aiFailed.issues()), eq(GENERATION_PROMPT)))
+                .thenReturn(generated);
+        when(ruleValidator.validate(generated)).thenReturn(rulePassed);
+        when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(aiFailed);
+
+        assertThatThrownBy(() -> service.generate(date))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("QUIZ_GENERATION_FAILED"));
+
+        verify(aiGateway, times(2)).validate(generated, VALIDATION_PROMPT);
+        verify(aiGateway).repair(generated, aiFailed.issues(), GENERATION_PROMPT);
+        verify(mapper).updateLog(
+                eq(42L),
+                isNull(),
+                eq("FAILED"),
+                eq(2),
+                eq(60),
+                anyString(),
+                anyString(),
+                eq(NOW),
+                eq(NOW)
+        );
+        verify(notificationService).notifyFailure(
+                eq("QUIZ_GENERATION"),
+                anyString(),
+                anyString()
+        );
     }
 
     @Test

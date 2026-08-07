@@ -24,6 +24,8 @@ public class QuizService {
     private static final int QUESTIONS_PER_PASSAGE = 3;
     private static final int OPTIONS_PER_QUESTION = 4;
     private static final int TOTAL_QUESTIONS = PASSAGE_COUNT * QUESTIONS_PER_PASSAGE;
+    private static final String PRIMARY_ATTEMPT = "PRIMARY";
+    private static final String BONUS_ATTEMPT = "BONUS";
 
     private final QuizMapper quizMapper;
     private final Clock clock;
@@ -40,18 +42,9 @@ public class QuizService {
         QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
         QuizContent content = loadAndValidateContent(quizSet.quizSetId());
         List<AttemptSummary> attempts = findAttemptSummaries(userId, quizSet.quizSetId());
-        AttemptSummary primaryAttempt = attempts.stream()
-                .filter(attempt -> "PRIMARY".equals(attempt.attemptType()))
-                .findFirst()
-                .orElse(null);
-
-        Set<Long> completedPassageIds = attempts.stream()
-                .map(AttemptSummary::passageId).collect(java.util.stream.Collectors.toSet());
-        List<PassageResponse> visiblePassages = content.passages().stream()
-                .map(passage -> completedPassageIds.contains(passage.passageId())
-                        ? passage.withSources(quizMapper.findSourceReferences(passage.passageId()))
-                        : passage)
-                .toList();
+        AttemptSummary primaryAttempt = findPrimaryAttempt(attempts);
+        List<PassageResponse> visiblePassages = addSourcesToCompletedPassages(
+                content.passages(), attempts);
         return new TodayQuizResponse(
                 quizSet.quizSetId(),
                 quizSet.challengeDate(),
@@ -73,104 +66,31 @@ public class QuizService {
         LocalDate today = LocalDate.now(clock);
         LocalDate challengeDate = resolveChallengeDate(today);
         QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
-        if (quizSet.quizSetId() != quizSetId) {
-            throw new ApiException(
-                    HttpStatus.NOT_FOUND,
-                    "TODAY_QUIZ_NOT_FOUND",
-                    "Today's published quiz was not found."
-            );
-        }
+        validateQuizSetId(quizSet, quizSetId);
+
         QuizContent content = loadAndValidateContent(quizSetId);
         ValidatedSubmission submission = validateSubmittedAnswers(submittedAnswers, content);
         List<QuizData.AttemptRow> existingAttempts = quizMapper.findAttempts(quizSetId, userId);
-        if (existingAttempts.stream().anyMatch(
-                attempt -> attempt.passageId() == submission.passageId())) {
-            throw alreadyCompletedException();
-        }
-        if (existingAttempts.size() >= PASSAGE_COUNT) {
-            throw alreadyCompletedException();
-        }
-        String attemptType = existingAttempts.isEmpty() ? "PRIMARY" : "BONUS";
+        String attemptType = determineAttemptType(existingAttempts, submission.passageId());
 
         List<QuizData.AnswerKeyRow> answerKeys = quizMapper.findAnswerKeys(quizSetId);
         if (answerKeys.size() != TOTAL_QUESTIONS) {
             throw invalidQuizContentException();
         }
 
-        Map<Long, SubmittedAnswer> answersByQuestion = submission.answersByQuestion();
-        List<QuizData.AnswerKeyRow> selectedAnswerKeys = answerKeys.stream()
-                .filter(answerKey -> answersByQuestion.containsKey(answerKey.questionId()))
-                .toList();
-        if (selectedAnswerKeys.size() != QUESTIONS_PER_PASSAGE) {
-            throw invalidAnswersException();
-        }
-        List<QuizData.AttemptAnswerInsert> answersToInsert = new ArrayList<>();
-        List<QuestionResult> questionResults = new ArrayList<>();
-        int score = 0;
-
-        for (QuizData.AnswerKeyRow answerKey : selectedAnswerKeys) {
-            SubmittedAnswer submittedAnswer = answersByQuestion.get(answerKey.questionId());
-            boolean correct = submittedAnswer.selectedOptionId() == answerKey.correctOptionId();
-            if (correct) {
-                score++;
-            }
-
-            answersToInsert.add(new QuizData.AttemptAnswerInsert(
-                    0,
-                    answerKey.questionId(),
-                    submittedAnswer.selectedOptionId(),
-                    correct
-            ));
-            questionResults.add(new QuestionResult(
-                    answerKey.questionId(),
-                    submittedAnswer.selectedOptionId(),
-                    answerKey.correctOptionId(),
-                    correct,
-                    answerKey.explanation(),
-                    answerKey.evidence()
-            ));
-        }
-
+        List<QuestionResult> questionResults = gradeAnswers(
+                submission.answersByQuestion(), answerKeys);
+        int score = countCorrectAnswers(questionResults);
         Instant completedAt = clock.instant();
-        QuizData.QuizAttemptInsert attempt =
-                new QuizData.QuizAttemptInsert(
-                        userId,
-                        quizSetId,
-                        submission.passageId(),
-                        attemptType,
-                        score,
-                        completedAt
-                );
-        try {
-            quizMapper.insertAttempt(attempt);
-        } catch (DataIntegrityViolationException exception) {
-            throw alreadyCompletedException();
-        }
-
-        List<QuizData.AttemptAnswerInsert> persistedAnswers = answersToInsert.stream()
-                .map(answer -> new QuizData.AttemptAnswerInsert(
-                        attempt.getId(),
-                        answer.questionId(),
-                        answer.selectedOptionId(),
-                        answer.correct()
-                ))
-                .toList();
+        long attemptId = saveAttempt(userId, quizSetId, submission.passageId(),
+                attemptType, score, completedAt);
+        List<QuizData.AttemptAnswerInsert> persistedAnswers = createAttemptAnswers(
+                attemptId, questionResults);
         quizMapper.insertAttemptAnswers(persistedAnswers);
-
-        List<QuizData.AnswerReviewInsert> reviews = persistedAnswers.stream()
-                .filter(answer -> !answer.correct())
-                .map(answer -> new QuizData.AnswerReviewInsert(
-                        userId,
-                        answer.questionId(),
-                        attempt.getId()
-                ))
-                .toList();
-        if (!reviews.isEmpty()) {
-            quizMapper.insertAnswerReviews(reviews);
-        }
+        saveWrongAnswerReviews(userId, attemptId, persistedAnswers);
 
         return new QuizResultResponse(
-                attempt.getId(),
+                attemptId,
                 quizSetId,
                 submission.passageId(),
                 attemptType,
@@ -183,21 +103,134 @@ public class QuizService {
         );
     }
 
-    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate challengeDate) {
-        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
-        if (quizSet == null) {
-            List<Long> candidates = quizMapper.findPublishedQuizSetIds(challengeDate, userId);
-            if (!candidates.isEmpty()) {
-                int assignmentIndex = Math.floorMod(
-                        31 * Long.hashCode(userId) + challengeDate.hashCode(), candidates.size());
-                quizMapper.insertAssignment(
-                        userId,
-                        challengeDate,
-                        candidates.get(assignmentIndex)
-                );
-                quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
+    private void validateQuizSetId(QuizData.QuizSetRow quizSet, long quizSetId) {
+        if (quizSet.quizSetId() == quizSetId) {
+            return;
+        }
+        throw new ApiException(
+                HttpStatus.NOT_FOUND,
+                "TODAY_QUIZ_NOT_FOUND",
+                "Today's published quiz was not found."
+        );
+    }
+
+    private String determineAttemptType(
+            List<QuizData.AttemptRow> existingAttempts,
+            long passageId
+    ) {
+        for (QuizData.AttemptRow attempt : existingAttempts) {
+            if (attempt.passageId() == passageId) {
+                throw alreadyCompletedException();
             }
         }
+        if (existingAttempts.size() >= PASSAGE_COUNT) {
+            throw alreadyCompletedException();
+        }
+        return existingAttempts.isEmpty() ? PRIMARY_ATTEMPT : BONUS_ATTEMPT;
+    }
+
+    private List<QuestionResult> gradeAnswers(
+            Map<Long, SubmittedAnswer> answersByQuestion,
+            List<QuizData.AnswerKeyRow> answerKeys
+    ) {
+        List<QuestionResult> results = new ArrayList<>();
+        for (QuizData.AnswerKeyRow answerKey : answerKeys) {
+            SubmittedAnswer answer = answersByQuestion.get(answerKey.questionId());
+            if (answer == null) {
+                continue;
+            }
+            boolean correct = answer.selectedOptionId() == answerKey.correctOptionId();
+            results.add(new QuestionResult(
+                    answerKey.questionId(),
+                    answer.selectedOptionId(),
+                    answerKey.correctOptionId(),
+                    correct,
+                    answerKey.explanation(),
+                    answerKey.evidence()
+            ));
+        }
+        if (results.size() != QUESTIONS_PER_PASSAGE) {
+            throw invalidAnswersException();
+        }
+        return results;
+    }
+
+    private int countCorrectAnswers(List<QuestionResult> results) {
+        int score = 0;
+        for (QuestionResult result : results) {
+            if (result.correct()) {
+                score++;
+            }
+        }
+        return score;
+    }
+
+    private long saveAttempt(
+            long userId,
+            long quizSetId,
+            long passageId,
+            String attemptType,
+            int score,
+            Instant completedAt
+    ) {
+        QuizData.QuizAttemptInsert attempt = new QuizData.QuizAttemptInsert(
+                userId, quizSetId, passageId, attemptType, score, completedAt);
+        try {
+            quizMapper.insertAttempt(attempt);
+        } catch (DataIntegrityViolationException exception) {
+            throw alreadyCompletedException();
+        }
+        return attempt.getId();
+    }
+
+    private List<QuizData.AttemptAnswerInsert> createAttemptAnswers(
+            long attemptId,
+            List<QuestionResult> results
+    ) {
+        List<QuizData.AttemptAnswerInsert> answers = new ArrayList<>();
+        for (QuestionResult result : results) {
+            answers.add(new QuizData.AttemptAnswerInsert(
+                    attemptId,
+                    result.questionId(),
+                    result.selectedOptionId(),
+                    result.correct()
+            ));
+        }
+        return answers;
+    }
+
+    private void saveWrongAnswerReviews(
+            long userId,
+            long attemptId,
+            List<QuizData.AttemptAnswerInsert> answers
+    ) {
+        List<QuizData.AnswerReviewInsert> reviews = new ArrayList<>();
+        for (QuizData.AttemptAnswerInsert answer : answers) {
+            if (!answer.correct()) {
+                reviews.add(new QuizData.AnswerReviewInsert(
+                        userId, answer.questionId(), attemptId));
+            }
+        }
+        if (!reviews.isEmpty()) {
+            quizMapper.insertAnswerReviews(reviews);
+        }
+    }
+
+    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate challengeDate) {
+        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
+        if (quizSet != null) {
+            return quizSet;
+        }
+
+        List<Long> candidates = quizMapper.findPublishedQuizSetIds(challengeDate, userId);
+        if (!candidates.isEmpty()) {
+            int assignmentIndex = Math.floorMod(
+                    31 * Long.hashCode(userId) + challengeDate.hashCode(), candidates.size());
+            long assignedQuizSetId = candidates.get(assignmentIndex);
+            quizMapper.insertAssignment(userId, challengeDate, assignedQuizSetId);
+            quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
+        }
+
         if (quizSet == null) {
             throw new ApiException(
                     HttpStatus.NOT_FOUND,
@@ -206,6 +239,37 @@ public class QuizService {
             );
         }
         return quizSet;
+    }
+
+    private AttemptSummary findPrimaryAttempt(List<AttemptSummary> attempts) {
+        for (AttemptSummary attempt : attempts) {
+            if (PRIMARY_ATTEMPT.equals(attempt.attemptType())) {
+                return attempt;
+            }
+        }
+        return null;
+    }
+
+    private List<PassageResponse> addSourcesToCompletedPassages(
+            List<PassageResponse> passages,
+            List<AttemptSummary> attempts
+    ) {
+        Set<Long> completedPassageIds = new HashSet<>();
+        for (AttemptSummary attempt : attempts) {
+            completedPassageIds.add(attempt.passageId());
+        }
+
+        List<PassageResponse> visiblePassages = new ArrayList<>();
+        for (PassageResponse passage : passages) {
+            if (completedPassageIds.contains(passage.passageId())) {
+                List<SourceReference> sources = quizMapper.findSourceReferences(
+                        passage.passageId());
+                visiblePassages.add(passage.withSources(sources));
+            } else {
+                visiblePassages.add(passage);
+            }
+        }
+        return visiblePassages;
     }
 
     private List<AttemptSummary> findAttemptSummaries(long userId, long quizSetId) {

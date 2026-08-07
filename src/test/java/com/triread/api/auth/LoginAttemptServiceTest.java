@@ -63,6 +63,33 @@ class LoginAttemptServiceTest {
     }
 
     @Test
+    void tracksSameLoginSeparatelyForEachAddress() {
+        service.recordFailure("203.0.113.1", "reader");
+        service.recordFailure("203.0.113.1", "reader");
+        service.recordFailure("203.0.113.1", "reader");
+        service.recordFailure("203.0.113.2", "reader");
+
+        assertThatThrownBy(() -> service.assertAllowed("203.0.113.1", "reader"))
+                .isInstanceOf(ApiException.class);
+        assertThatCode(() -> service.assertAllowed("203.0.113.2", "reader"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void clearLoginReturnsNumberOfRemovedAddresses() {
+        lock("203.0.113.1", "reader");
+        lock("203.0.113.2", "reader");
+        lock("203.0.113.3", "other");
+
+        int cleared = service.clearLogin("READER");
+
+        assertThat(cleared).isEqualTo(2);
+        assertThat(service.getLockedAttempts())
+                .extracting(LoginAttemptService.LoginLockSummary::loginName)
+                .containsExactly("other");
+    }
+
+    @Test
     void springContextCreatesServiceWithConfiguredConstructor() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.getBeanFactory().setConversionService(ApplicationConversionService.getSharedInstance());
@@ -77,5 +104,11 @@ class LoginAttemptServiceTest {
             assertThatCode(() -> context.getBean(LoginAttemptService.class))
                     .doesNotThrowAnyException();
         }
+    }
+
+    private void lock(String address, String loginName) {
+        service.recordFailure(address, loginName);
+        service.recordFailure(address, loginName);
+        service.recordFailure(address, loginName);
     }
 }

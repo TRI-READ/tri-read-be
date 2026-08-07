@@ -12,7 +12,6 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -36,7 +36,8 @@ public class GroupController {
     }
 
     @PostMapping
-    public ResponseEntity<GroupService.CreatedGroupResponse> create(
+    @ResponseStatus(HttpStatus.CREATED)
+    public GroupService.CreatedGroupResponse create(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody CreateGroupRequest request
     ) {
@@ -47,7 +48,7 @@ public class GroupController {
         );
         auditService.record(principal.userId(), "GROUP_CREATED", "GROUP",
                 result.group().groupId(), Map.of("name", result.group().name()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        return result;
     }
 
     @GetMapping("/my")
@@ -74,7 +75,8 @@ public class GroupController {
     }
 
     @PostMapping("/join")
-    public ResponseEntity<GroupService.GroupDetail> join(
+    @ResponseStatus(HttpStatus.CREATED)
+    public GroupService.GroupDetail join(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Valid @RequestBody JoinGroupRequest request
     ) {
@@ -82,11 +84,12 @@ public class GroupController {
                 principal.userId(),
                 request.inviteCode()
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        return result;
     }
 
     @PostMapping("/{groupId}/invites")
-    public ResponseEntity<GroupService.InviteCodeResponse> renewInvite(
+    @ResponseStatus(HttpStatus.CREATED)
+    public GroupService.InviteCodeResponse renewInvite(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Positive @PathVariable long groupId,
             @Valid @RequestBody(required = false) CreateInviteRequest request
@@ -106,7 +109,7 @@ public class GroupController {
                         "expiresInDays", policy.expiresInDays(),
                         "maxUses", policy.maxUses(),
                         "revokeExisting", policy.revokeExisting()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        return result;
     }
 
     @GetMapping("/{groupId}/invites")
@@ -118,7 +121,8 @@ public class GroupController {
     }
 
     @DeleteMapping("/{groupId}/invites/{inviteId}")
-    public ResponseEntity<Void> revokeInvite(
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeInvite(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Positive @PathVariable long groupId,
             @Positive @PathVariable long inviteId
@@ -126,11 +130,11 @@ public class GroupController {
         groupService.revokeInvite(groupId, inviteId, principal.userId());
         auditService.record(principal.userId(), "GROUP_INVITE_REVOKED", "GROUP", groupId,
                 Map.of("inviteId", inviteId));
-        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{groupId}/members/{memberUserId}")
-    public ResponseEntity<Void> removeMember(
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeMember(
             @AuthenticationPrincipal AuthPrincipal principal,
             @Positive @PathVariable long groupId,
             @Positive @PathVariable long memberUserId
@@ -138,7 +142,6 @@ public class GroupController {
         groupService.removeMember(groupId, memberUserId, principal.userId());
         auditService.record(principal.userId(), "GROUP_MEMBER_REMOVED", "GROUP", groupId,
                 Map.of("memberUserId", memberUserId));
-        return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{groupId}/owner")

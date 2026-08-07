@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 public class DiscordNotificationService {
     private static final Logger log = LoggerFactory.getLogger(DiscordNotificationService.class);
     private static final int MAX_CONTENT_LENGTH = 1900;
+    private static final Duration DEFAULT_COOLDOWN = Duration.ofMinutes(15);
     private final DiscordNotificationProperties properties;
     private final DiscordWebhookClient webhookClient;
     private final Clock clock;
@@ -58,10 +59,14 @@ public class DiscordNotificationService {
     }
 
     public synchronized boolean notifyFailure(String key, String title, String detail) {
-        if (!properties.isEnabled() || !isConfigured()) return false;
+        if (!isAvailable()) {
+            return false;
+        }
+
         Instant now = clock.instant();
-        Instant previous = lastSentAt.get(key);
-        if (previous != null && previous.plus(cooldown()).isAfter(now)) return false;
+        if (isInCooldown(key, now)) {
+            return false;
+        }
 
         try {
             webhookClient.send(
@@ -80,7 +85,7 @@ public class DiscordNotificationService {
     }
 
     private void ensureAvailable() {
-        if (!properties.isEnabled() || !isConfigured()) {
+        if (!isAvailable()) {
             throw new ApiException(
                     HttpStatus.SERVICE_UNAVAILABLE,
                     "DISCORD_NOTIFICATION_DISABLED",
@@ -89,9 +94,20 @@ public class DiscordNotificationService {
         }
     }
 
+    private boolean isAvailable() {
+        return properties.isEnabled() && isConfigured();
+    }
+
+    private boolean isInCooldown(String key, Instant now) {
+        Instant previous = lastSentAt.get(key);
+        return previous != null && previous.plus(cooldown()).isAfter(now);
+    }
+
     private boolean isConfigured() {
         String webhookUrl = properties.getWebhookUrl();
-        if (webhookUrl == null) return false;
+        if (webhookUrl == null) {
+            return false;
+        }
         String normalized = webhookUrl.trim();
         return normalized.startsWith("https://discord.com/api/webhooks/")
                 || normalized.startsWith("https://discordapp.com/api/webhooks/");
@@ -99,14 +115,18 @@ public class DiscordNotificationService {
 
     private Duration cooldown() {
         Duration configured = properties.getCooldown();
-        return configured == null || configured.isNegative()
-                ? Duration.ofMinutes(15)
-                : configured;
+        if (configured == null || configured.isNegative()) {
+            return DEFAULT_COOLDOWN;
+        }
+        return configured;
     }
 
     private String environment() {
         String configured = properties.getEnvironment();
-        return configured == null || configured.isBlank() ? "unknown" : configured.trim();
+        if (configured == null || configured.isBlank()) {
+            return "unknown";
+        }
+        return configured.trim();
     }
 
     private String format(String status, String title, String detail) {
@@ -128,7 +148,9 @@ public class DiscordNotificationService {
     }
 
     private String safe(String value) {
-        if (value == null || value.isBlank()) return "-";
+        if (value == null || value.isBlank()) {
+            return "-";
+        }
         return value.replace("@", "@\u200B").trim();
     }
 
