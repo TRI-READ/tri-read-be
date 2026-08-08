@@ -47,7 +47,7 @@ jobs:
 
       - name: Report production smoke failure
         if: ${{ failure() }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const title = '[운영 알림] 운영 서비스 점검 실패';
