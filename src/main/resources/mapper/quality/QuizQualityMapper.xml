@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.triread.api.quality.QuizQualityMapper">
+    <sql id="qualityRows">
+        WITH answer_stats AS (
+            SELECT q.id AS question_id,
+                   COUNT(aa.question_id) AS response_count,
+                   COUNT(aa.question_id) FILTER (WHERE aa.is_correct) AS correct_count,
+                   COUNT(aa.question_id) FILTER (WHERE NOT aa.is_correct) AS incorrect_count
+            FROM questions q
+            LEFT JOIN attempt_answers aa ON aa.question_id = q.id
+            GROUP BY q.id
+        ),
+        wrong_option_counts AS (
+            SELECT aa.question_id, aa.selected_option_id, COUNT(*) AS selected_count
+            FROM attempt_answers aa
+            WHERE NOT aa.is_correct
+            GROUP BY aa.question_id, aa.selected_option_id
+        ),
+        wrong_stats AS (
+            SELECT question_id, MAX(selected_count) AS max_wrong_option_count
+            FROM wrong_option_counts
+            GROUP BY question_id
+        ),
+        quality_rows AS (
+            SELECT q.id AS question_id,
+                   qs.challenge_date,
+                   qs.variant_code,
+                   p.title AS passage_title,
+                   p.topic,
+                   p.position AS passage_position,
+                   q.position AS question_position,
+                   q.content AS question_content,
+                   stats.response_count,
+                   stats.correct_count,
+                   stats.incorrect_count,
+                   CASE WHEN stats.response_count = 0 THEN 0
+                        ELSE ROUND(stats.correct_count * 100.0 / stats.response_count, 1)
+                   END AS correct_rate,
+                   COALESCE(wrong.max_wrong_option_count, 0) AS max_wrong_option_count,
+                   CASE
+                       WHEN stats.response_count &lt; 5 THEN 'DATA_INSUFFICIENT'
+                       WHEN stats.correct_count * 100.0 / NULLIF(stats.response_count, 0) &lt; 30
+                         OR stats.correct_count * 100.0 / NULLIF(stats.response_count, 0) &gt; 90
+                         OR (stats.incorrect_count &gt;= 3 AND
+                             COALESCE(wrong.max_wrong_option_count, 0) * 100.0
+                                 / NULLIF(stats.incorrect_count, 0) &gt;= 70)
+                       THEN 'REVIEW_REQUIRED'
+                       ELSE 'NORMAL'
+                   END AS quality_status
+            FROM questions q
+            JOIN passages p ON p.id = q.passage_id
+            JOIN quiz_sets qs ON qs.id = p.quiz_set_id
+            JOIN answer_stats stats ON stats.question_id = q.id
+            LEFT JOIN wrong_stats wrong ON wrong.question_id = q.id
+            WHERE qs.status = 'PUBLISHED'
+        )
+    </sql>
+
+    <select id="findQuestions" resultType="com.triread.api.quality.QuizQualityData$QuestionRow">
+        <include refid="qualityRows"/>
+        SELECT * FROM quality_rows
+        <where>
+            <if test="status != null">quality_status = #{status}</if>
+            <if test="keyword != null">
+                <if test="status != null">AND</if>
+                (question_content ILIKE '%' || #{keyword} || '%'
+                 OR passage_title ILIKE '%' || #{keyword} || '%'
+                 OR topic ILIKE '%' || #{keyword} || '%')
+            </if>
+        </where>
+        ORDER BY CASE quality_status
+                     WHEN 'REVIEW_REQUIRED' THEN 1
+                     WHEN 'DATA_INSUFFICIENT' THEN 2
+                     ELSE 3
+                 END,
+                 challenge_date DESC, question_id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countQuestions" resultType="long">
+        <include refid="qualityRows"/>
+        SELECT COUNT(*) FROM quality_rows
+        <where>
+            <if test="status != null">quality_status = #{status}</if>
+            <if test="keyword != null">
+                <if test="status != null">AND</if>
+                (question_content ILIKE '%' || #{keyword} || '%'
+                 OR passage_title ILIKE '%' || #{keyword} || '%'
+                 OR topic ILIKE '%' || #{keyword} || '%')
+            </if>
+        </where>
+    </select>
+
+    <select id="countByStatus" resultType="com.triread.api.quality.QuizQualityData$StatusCount">
+        <include refid="qualityRows"/>
+        SELECT quality_status, COUNT(*) AS count
+        FROM quality_rows
+        GROUP BY quality_status
+    </select>
+
+    <select id="findOptions" resultType="com.triread.api.quality.QuizQualityData$OptionRow">
+        SELECT qo.id AS option_id,
+               qo.question_id,
+               qo.position,
+               qo.content,
+               COUNT(aa.selected_option_id) AS selected_count,
+               CASE WHEN COALESCE(totals.response_count, 0) = 0 THEN 0
+                    ELSE ROUND(COUNT(aa.selected_option_id) * 100.0 / totals.response_count, 1)
+               END AS selection_rate,
+               qo.id = qk.correct_option_id AS correct
+        FROM question_options qo
+        JOIN question_keys qk ON qk.question_id = qo.question_id
+        LEFT JOIN attempt_answers aa ON aa.selected_option_id = qo.id
+        LEFT JOIN (
+            SELECT question_id, COUNT(*) AS response_count
+            FROM attempt_answers
+            GROUP BY question_id
+        ) totals ON totals.question_id = qo.question_id
+        WHERE qo.question_id IN
+        <foreach collection="questionIds" item="questionId" open="(" separator="," close=")">
+            #{questionId}
+        </foreach>
+        GROUP BY qo.id, qo.question_id, qo.position, qo.content,
+                 qk.correct_option_id, totals.response_count
+        ORDER BY qo.question_id, qo.position
+    </select>
+</mapper>
