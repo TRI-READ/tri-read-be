@@ -121,11 +121,15 @@ jobs:
           git fetch origin main
           MAIN_SHA="$(git rev-parse origin/main)"
 
+          # A merge performed with GITHUB_TOKEN does not trigger another push workflow.
+          # Start main CI explicitly so deployment still runs after promotion.
+          gh workflow run ci.yml --ref main
+
           for attempt in $(seq 1 30); do
             RUN_ID="$(gh run list \
               --workflow ci.yml \
               --branch main \
-              --event push \
+              --event workflow_dispatch \
               --limit 20 \
               --json databaseId,headSha \
               --jq ".[] | select(.headSha == \"$MAIN_SHA\") | .databaseId" \
