@@ -26,6 +26,24 @@ TRI:READ는 이동 시간에도 부담 없이 풀 수 있는 고3 수준의 비�
 - GitHub Actions
 - OCI Compute
 
+## 한눈에 보는 구조
+
+```mermaid
+flowchart LR
+    Browser["브라우저"] --> Caddy["Caddy / HTTPS"]
+    Caddy --> Frontend["Next.js 정적 파일"]
+    Caddy --> Api["Spring Boot API"]
+    Api --> Database[(PostgreSQL)]
+    Api --> Gemini["Gemini API"]
+    Actions["GitHub Actions"] --> Oci["OCI Compute"]
+    Oci --> Caddy
+```
+
+Caddy가 한 도메인에서 정적 프론트엔드와 `/api/*` 요청을 나눠 처리합니다. 브라우저는 서버 세션과 CSRF 토큰으로 인증하며, Spring Boot만 PostgreSQL과 Gemini API에 접근합니다.
+
+- [상세 아키텍처, 핵심 ERD와 설계 결정](docs/architecture.md)
+- [브랜치 및 배포 정책](docs/branching-and-release.md)
+
 ## 주요 기능
 
 - PIN 기반 회원가입, 로그인, 로그아웃과 본인 PIN 변경
@@ -258,6 +276,10 @@ unset BACKUP_ENCRYPTION_KEY
 - Dependabot이 Gradle 의존성과 GitHub Actions 업데이트를 매주 확인합니다.
 - CodeQL `security-extended` 쿼리가 PR, `dev/main` 푸시, 주간 일정에서 Java 코드를 검사합니다.
 - OCI 배포는 `OCI_KNOWN_HOSTS` Secret에 고정한 SSH 호스트 키만 신뢰합니다.
+
+## 검증 현황
+
+2026-08-09 로컬 `dev` 기준으로 `./gradlew test`를 실행해 145개 테스트가 통과했고, 3개는 환경 조건에 따라 제외됐습니다. 단위 테스트 외에도 Testcontainers 기반 PostgreSQL 마이그레이션과 문제 생성·발행·사용자 배정 흐름을 확인합니다.
 
 ## 저장소
 
