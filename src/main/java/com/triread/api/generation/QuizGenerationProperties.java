@@ -57,7 +57,7 @@ public class QuizGenerationProperties {
         private String baseUrl = "https://generativelanguage.googleapis.com";
         private String generationModel = "gemini-3.1-flash-lite";
         private String validationModel = "gemini-3.1-flash-lite";
-        private String sourceModel = "gemini-2.5-flash-lite";
+        private String sourceModel = "gemini-3.1-flash-lite";
         private String promptVersion = "v2";
 
         public String getApiKey() { return apiKey; }
