@@ -61,7 +61,7 @@ public class OperationsService {
 
         return new OperationsData.Summary(
                 "UP", "UP", mapper.databaseSizeBytes(), uptime, version, startedAt,
-                aiStats, aiErrors, qualityStats, inventory,
+                aiStats, properties.getMaxApiCallsPerDay(), aiErrors, qualityStats, inventory,
                 recentFailures, recentAdminActions, lockedLoginAttempts,
                 lastSchedulerRun, nextRun(properties.getCron()),
                 lastBackup, mapper.countGroundedBriefs(),

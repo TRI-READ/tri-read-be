@@ -40,6 +40,8 @@ class QuizQualityServiceImplTest {
         QuizQualityResponse.QualityPage result = service.getQualityPage(0, 10, null, null);
 
         assertThat(result.reviewRequiredCount()).isEqualTo(1);
+        assertThat(result.totalQuestionCount()).isEqualTo(1);
+        assertThat(result.normalCount()).isZero();
         assertThat(result.page().items()).singleElement().satisfies(question -> {
             assertThat(question.status()).isEqualTo("REVIEW_REQUIRED");
             assertThat(question.reasons()).containsExactly(
@@ -69,6 +71,7 @@ class QuizQualityServiceImplTest {
         assertThat(result.page().page()).isZero();
         assertThat(result.page().size()).isEqualTo(50);
         assertThat(result.dataInsufficientCount()).isEqualTo(3);
+        assertThat(result.totalQuestionCount()).isEqualTo(3);
         assertThat(result.page().items().getFirst().reasons())
                 .containsExactly("아직 응답이 5건 미만입니다.");
     }

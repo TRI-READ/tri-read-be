@@ -87,7 +87,7 @@ flowchart LR
 
 ## 검증 근거
 
-- `./gradlew test`: 145개 통과, 실패 0, 조건부 제외 3개 (2026-08-09 `dev`)
+- `./gradlew test`: 145개 통과, 실패 0, 조건부 제외 3개 (2026-08-10 `dev`)
 - Testcontainers: 빈 PostgreSQL에 Flyway 전체 적용 및 핵심 테이블 확인
 - 통합 테스트: 문제 생성, 검증, 발행, 사용자 배정과 학습 흐름 확인
 - CI: Gradle 테스트, CodeQL `security-extended`, 의존성 점검

@@ -47,10 +47,16 @@ public class QuizQualityServiceImpl implements QuizQualityService {
             counts.put(count.qualityStatus(), count.count());
         }
 
+        long reviewRequiredCount = counts.getOrDefault("REVIEW_REQUIRED", 0L);
+        long dataInsufficientCount = counts.getOrDefault("DATA_INSUFFICIENT", 0L);
+        long normalCount = counts.getOrDefault("NORMAL", 0L);
+
         return new QuizQualityResponse.QualityPage(
                 PageResponse.of(items, page, size, totalElements),
-                counts.getOrDefault("REVIEW_REQUIRED", 0L),
-                counts.getOrDefault("DATA_INSUFFICIENT", 0L)
+                reviewRequiredCount + dataInsufficientCount + normalCount,
+                reviewRequiredCount,
+                dataInsufficientCount,
+                normalCount
         );
     }
 
