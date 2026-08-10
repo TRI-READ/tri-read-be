@@ -41,7 +41,6 @@ public final class OperationsData {
             String version,
             Instant startedAt,
             AiStats aiToday,
-            int aiDailyLimit,
             List<ErrorCount> aiErrorsToday,
             QualityStats quality,
             List<InventoryRow> inventory,

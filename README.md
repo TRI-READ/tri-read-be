@@ -83,13 +83,6 @@ URL: jdbc:postgresql://localhost:15432/tri_read
 .\gradlew.bat bootRun
 ```
 
-Windows에서 한글이 포함된 저장소 경로 때문에 Gradle 증분 빌드가 불안정하면, 저장소 밖의 영문 경로를 빌드 디렉터리로 지정할 수 있습니다.
-
-```powershell
-$env:TRI_READ_BUILD_DIR="C:\\temp\\tri-read-be-build"
-.\gradlew.bat test
-```
-
 ### Gemini 키 설정
 
 `config/application-secret.example.yml`을 `config/application-secret.yml`로 복사하고 아래 항목에 로컬 Gemini API 키를 넣습니다.
@@ -199,7 +192,7 @@ AI 생성 결과는 서버 규칙 검증과 최근 지문의 제목·주제·본
 
 관리자 화면의 보안·감사 메뉴에서는 로그인 실패 제한으로 잠긴 아이디를 확인하고 해제할 수 있습니다. 퀴즈 생성·재시도·편집·발행·삭제, 프롬프트 저장·활성화, 사용자 권한 변경과 로그인 잠금 해제는 관리자 작업 이력에 남습니다.
 
-관리자 운영 현황은 애플리케이션·DB 상태와 가동 시간, 배포 버전, DB 크기, 당일 Gemini 호출량과 일일 한도, 향후 7일 퀴즈 재고, 전체 문항의 정상·검토 필요·데이터 부족 집계, 최근 생성 실패와 관리자 작업을 보여 줍니다. 생성 스케줄러와 DB 백업은 `operation_events`에 시작·성공·실패를 남겨 마지막 실행 상태를 같은 화면에서 확인할 수 있습니다.
+관리자 운영 현황은 애플리케이션·DB 상태와 가동 시간, 배포 버전, DB 크기, 당일 Gemini 호출과 오류 코드, 향후 7일 퀴즈 재고, 최근 7일 생성 품질, 최근 실패와 관리자 작업을 보여 줍니다. 생성 스케줄러와 DB 백업은 `operation_events`에 시작·성공·실패를 남겨 마지막 실행 상태를 같은 화면에서 확인할 수 있습니다.
 
 ## 실제 풀이 기반 퀴즈 품질
 
@@ -286,10 +279,9 @@ unset BACKUP_ENCRYPTION_KEY
 
 ## 검증 현황
 
-2026-08-10 로컬 `dev` 기준으로 `./gradlew test`를 실행해 145개 테스트가 통과했고, 3개는 환경 조건에 따라 제외됐습니다. 단위 테스트 외에도 Testcontainers 기반 PostgreSQL 마이그레이션과 문제 생성·발행·사용자 배정 흐름을 확인합니다.
+2026-08-09 로컬 `dev` 기준으로 `./gradlew test`를 실행해 145개 테스트가 통과했고, 3개는 환경 조건에 따라 제외됐습니다. 단위 테스트 외에도 Testcontainers 기반 PostgreSQL 마이그레이션과 문제 생성·발행·사용자 배정 흐름을 확인합니다.
 
 ## 저장소
 
 - 프론트엔드: https://github.com/TRI-READ/tri-read-fe
 - 백엔드: https://github.com/TRI-READ/tri-read-be
-- 백엔드 v1.0.0: https://github.com/TRI-READ/tri-read-be/releases/tag/v1.0.0

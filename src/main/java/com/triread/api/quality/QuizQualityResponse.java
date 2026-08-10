@@ -10,10 +10,8 @@ public final class QuizQualityResponse {
 
     public record QualityPage(
             PageResponse<QuestionQuality> page,
-            long totalQuestionCount,
             long reviewRequiredCount,
-            long dataInsufficientCount,
-            long normalCount
+            long dataInsufficientCount
     ) {
     }
 
