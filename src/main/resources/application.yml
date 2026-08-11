@@ -67,5 +67,5 @@ app:
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
       generation-model: ${GEMINI_GENERATION_MODEL:gemini-3.1-flash-lite}
       validation-model: ${GEMINI_VALIDATION_MODEL:gemini-3.1-flash-lite}
-      source-model: ${GEMINI_SOURCE_MODEL:gemini-2.5-flash-lite}
+      source-model: ${GEMINI_SOURCE_MODEL:gemini-3.1-flash-lite}
       prompt-version: ${QUIZ_PROMPT_VERSION:v2}
