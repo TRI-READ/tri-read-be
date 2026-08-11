@@ -8,9 +8,14 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface AdminQuizMapper {
-    List<AdminQuizData.QuizRow> findQuizzes(@Param("offset") int offset,
+    List<AdminQuizData.QuizRow> findQuizzes(@Param("status") String status,
+                                            @Param("challengeDate") LocalDate challengeDate,
+                                            @Param("keyword") String keyword,
+                                            @Param("offset") int offset,
                                             @Param("limit") int limit);
-    long countQuizzes();
+    long countQuizzes(@Param("status") String status,
+                      @Param("challengeDate") LocalDate challengeDate,
+                      @Param("keyword") String keyword);
     long countPendingQuizzes();
     AdminQuizData.QuizRow findQuiz(long quizSetId);
     int countActiveByDate(LocalDate challengeDate);
@@ -30,6 +35,7 @@ public interface AdminQuizMapper {
                      @Param("promptVersion") String promptVersion,
                      @Param("generationPromptId") long generationPromptId,
                      @Param("validationPromptId") long validationPromptId);
+    int markManuallyReviewed(long quizSetId);
     int updateDraftDate(@Param("quizSetId") long quizSetId,
                         @Param("challengeDate") LocalDate challengeDate,
                         @Param("variantCode") String variantCode);

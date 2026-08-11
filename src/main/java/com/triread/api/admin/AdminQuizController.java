@@ -39,9 +39,12 @@ public class AdminQuizController {
     @GetMapping
     public AdminQuizService.QuizPage list(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "6") int size
+            @RequestParam(defaultValue = "6") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) LocalDate challengeDate,
+            @RequestParam(required = false) String keyword
     ) {
-        return service.getQuizzes(page, size);
+        return service.getQuizzes(page, size, status, challengeDate, keyword);
     }
 
     @GetMapping("/{quizSetId}")
@@ -91,6 +94,38 @@ public class AdminQuizController {
         return published;
     }
 
+    @PostMapping("/{quizSetId}/review")
+    public AdminQuizService.QuizDetail review(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Positive @PathVariable long quizSetId
+    ) {
+        AdminQuizService.QuizDetail reviewed = service.review(quizSetId);
+        auditService.record(principal.userId(), "QUIZ_REVIEWED", "QUIZ_SET", quizSetId, Map.of());
+        return reviewed;
+    }
+
+    @PostMapping("/bulk/publish")
+    public AdminQuizService.BulkResult bulkPublish(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody BulkQuizRequest request
+    ) {
+        AdminQuizService.BulkResult result = service.publishAll(request.quizSetIds());
+        auditService.record(principal.userId(), "QUIZZES_BULK_PUBLISHED", "QUIZ_SET", null,
+                Map.of("quizSetIds", request.quizSetIds()));
+        return result;
+    }
+
+    @PostMapping("/bulk/delete")
+    public AdminQuizService.BulkResult bulkDelete(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody BulkQuizRequest request
+    ) {
+        AdminQuizService.BulkResult result = service.deleteAll(request.quizSetIds());
+        auditService.record(principal.userId(), "QUIZZES_BULK_DELETED", "QUIZ_SET", null,
+                Map.of("quizSetIds", request.quizSetIds()));
+        return result;
+    }
+
     private AdminQuizService.CreateQuiz toCommand(CreateQuizRequest request) {
         List<AdminQuizService.CreatePassage> passages = new ArrayList<>();
 
@@ -137,6 +172,11 @@ public class AdminQuizController {
             @Min(1) @Max(4) int correctOptionPosition,
             @NotBlank String explanation,
             String evidence
+    ) {
+    }
+
+    public record BulkQuizRequest(
+            @NotNull @Size(min = 1, max = 50) List<@Positive Long> quizSetIds
     ) {
     }
 }

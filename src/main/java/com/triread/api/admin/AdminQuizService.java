@@ -33,17 +33,50 @@ public class AdminQuizService {
     }
 
     @Transactional(readOnly = true)
-    public QuizPage getQuizzes(int requestedPage, int requestedSize) {
+    public QuizPage getQuizzes(int requestedPage, int requestedSize, String status,
+                               LocalDate challengeDate, String keyword) {
         int page = PageResponse.page(requestedPage);
         int size = PageResponse.size(requestedSize);
-        long total = adminQuizMapper.countQuizzes();
+        String cleanStatus = normalizeStatus(status);
+        String cleanKeyword = clean(keyword);
+        long total = adminQuizMapper.countQuizzes(cleanStatus, challengeDate, cleanKeyword);
         List<QuizSummary> quizzes = new ArrayList<>();
-        List<AdminQuizData.QuizRow> rows = adminQuizMapper.findQuizzes(page * size, size);
+        List<AdminQuizData.QuizRow> rows = adminQuizMapper.findQuizzes(
+                cleanStatus, challengeDate, cleanKeyword, page * size, size);
         for (AdminQuizData.QuizRow row : rows) {
             quizzes.add(QuizSummary.from(row));
         }
         return new QuizPage(PageResponse.of(quizzes, page, size, total),
                 adminQuizMapper.countPendingQuizzes());
+    }
+
+    @Transactional
+    public QuizDetail review(long quizSetId) {
+        AdminQuizData.QuizRow quiz = requireQuiz(quizSetId);
+        if ("REVIEWED".equals(quiz.status()) || "PUBLISHED".equals(quiz.status())) {
+            return getQuiz(quizSetId);
+        }
+        if (adminQuizMapper.markManuallyReviewed(quizSetId) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "QUIZ_CANNOT_BE_REVIEWED",
+                    "Only a draft quiz can be reviewed.");
+        }
+        return getQuiz(quizSetId);
+    }
+
+    @Transactional
+    public BulkResult publishAll(List<Long> quizSetIds) {
+        for (long quizSetId : quizSetIds) {
+            publish(quizSetId);
+        }
+        return new BulkResult(quizSetIds.size(), List.copyOf(quizSetIds));
+    }
+
+    @Transactional
+    public BulkResult deleteAll(List<Long> quizSetIds) {
+        for (long quizSetId : quizSetIds) {
+            deleteDraft(quizSetId);
+        }
+        return new BulkResult(quizSetIds.size(), List.copyOf(quizSetIds));
     }
 
     @Transactional(readOnly = true)
@@ -360,6 +393,19 @@ public class AdminQuizService {
         return value.trim();
     }
 
+    private String normalizeStatus(String status) {
+        String value = clean(status);
+        if (value == null) {
+            return null;
+        }
+        value = value.toUpperCase(java.util.Locale.ROOT);
+        if (!Set.of("DRAFT", "REVIEWED", "PUBLISHED", "REJECTED").contains(value)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUIZ_STATUS",
+                    "The quiz status is invalid.");
+        }
+        return value;
+    }
+
     public record CreateQuiz(LocalDate challengeDate, List<CreatePassage> passages) {}
     public record CreatePassage(String title, String topic, String content, List<CreateQuestion> questions) {}
     public record CreateQuestion(String content, List<String> options, int correctOptionPosition, String explanation, String evidence) {}
@@ -372,6 +418,7 @@ public class AdminQuizService {
         }
     }
     public record QuizPage(PageResponse<QuizSummary> page, long pendingCount) {}
+    public record BulkResult(int processedCount, List<Long> quizSetIds) {}
     public record QuizDetail(QuizSummary quiz, List<PassageDetail> passages) {}
     public record PassageDetail(long passageId, int position, String title, String topic, String content, List<QuestionDetail> questions) {}
     public record QuestionDetail(long questionId, int position, String content, List<OptionDetail> options, int correctOptionPosition, String explanation, String evidence) {}

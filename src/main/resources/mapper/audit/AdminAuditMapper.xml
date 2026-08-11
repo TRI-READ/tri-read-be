@@ -11,8 +11,24 @@
                aal.created_at
         FROM admin_audit_logs aal
         LEFT JOIN app_users au ON au.id = aal.actor_user_id
+        <where>
+            <if test="action != null">AND aal.action = #{action}</if>
+            <if test="actor != null">AND au.login_name ILIKE CONCAT('%', #{actor}, '%')</if>
+            <if test="from != null">AND aal.created_at &gt;= #{from}</if>
+            <if test="until != null">AND aal.created_at &lt; #{until}</if>
+        </where>
         ORDER BY aal.created_at DESC, aal.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
-    <select id="countAll" resultType="long">SELECT COUNT(*) FROM admin_audit_logs</select>
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*)
+        FROM admin_audit_logs aal
+        LEFT JOIN app_users au ON au.id = aal.actor_user_id
+        <where>
+            <if test="action != null">AND aal.action = #{action}</if>
+            <if test="actor != null">AND au.login_name ILIKE CONCAT('%', #{actor}, '%')</if>
+            <if test="from != null">AND aal.created_at &gt;= #{from}</if>
+            <if test="until != null">AND aal.created_at &lt; #{until}</if>
+        </where>
+    </select>
 </mapper>

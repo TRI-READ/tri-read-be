@@ -47,10 +47,14 @@ public final class QuizGenerationData {
                                    String aiProvider, String aiModel, String promptVersion,
                                    Long generationPromptId, Long validationPromptId,
                                    String status, int attemptCount, Integer validationScore,
-                                   String errorMessage, Instant createdAt, Instant updatedAt,
+                                   int manualRetryCount, String errorMessage,
+                                   Instant createdAt, Instant updatedAt,
                                    Instant completedAt) {}
 
     public record GenerationStats(long successCount, long failureCount) {}
+
+    public record FailureSummary(String errorCode, long failureCount,
+                                 Instant lastOccurredAt) {}
 
     public record ValidationResultInsert(long generationLogId, Long quizSetId, int attemptNumber,
                                          String validationType, boolean passed,

@@ -56,6 +56,12 @@ public class QuizGenerationController {
         return service.getLog(generationLogId);
     }
 
+    @GetMapping("/failures")
+    public List<QuizGenerationData.FailureSummary> failures(
+            @RequestParam(defaultValue = "10") int limit) {
+        return service.getFailureSummaries(limit);
+    }
+
     @PostMapping("/{generationLogId}/retry")
     public ResponseEntity<QuizGenerationService.GenerationResult> retry(
             @AuthenticationPrincipal AuthPrincipal principal,

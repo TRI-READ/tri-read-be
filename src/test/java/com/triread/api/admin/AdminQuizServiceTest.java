@@ -61,13 +61,13 @@ class AdminQuizServiceTest {
     @Test
     void listsQuizDraftsWithServerSidePagination() {
         Instant createdAt = Instant.parse("2026-07-12T03:00:00Z");
-        when(adminQuizMapper.countQuizzes()).thenReturn(14L);
+        when(adminQuizMapper.countQuizzes(null, null, null)).thenReturn(14L);
         when(adminQuizMapper.countPendingQuizzes()).thenReturn(8L);
-        when(adminQuizMapper.findQuizzes(6, 6)).thenReturn(List.of(
+        when(adminQuizMapper.findQuizzes(null, null, null, 6, 6)).thenReturn(List.of(
                 new AdminQuizData.QuizRow(7L, LocalDate.of(2026, 7, 19),
                         "B", "REVIEWED", createdAt, null)));
 
-        AdminQuizService.QuizPage result = service.getQuizzes(1, 6);
+        AdminQuizService.QuizPage result = service.getQuizzes(1, 6, null, null, null);
 
         assertThat(result.page().items()).singleElement()
                 .extracting(AdminQuizService.QuizSummary::quizSetId)
@@ -75,6 +75,22 @@ class AdminQuizServiceTest {
         assertThat(result.page().page()).isEqualTo(1);
         assertThat(result.page().totalPages()).isEqualTo(3);
         assertThat(result.pendingCount()).isEqualTo(8);
+    }
+
+    @Test
+    void reviewsDraftQuiz() {
+        long quizId = 9L;
+        when(adminQuizMapper.findQuiz(quizId)).thenReturn(new AdminQuizData.QuizRow(
+                quizId, LocalDate.of(2026, 7, 19), "A", "DRAFT", Instant.now(), null));
+        when(adminQuizMapper.markManuallyReviewed(quizId)).thenReturn(1);
+        when(quizMapper.findPassages(quizId)).thenReturn(List.of());
+        when(quizMapper.findQuestions(quizId)).thenReturn(List.of());
+        when(quizMapper.findOptions(quizId)).thenReturn(List.of());
+        when(quizMapper.findAnswerKeys(quizId)).thenReturn(List.of());
+
+        service.review(quizId);
+
+        verify(adminQuizMapper).markManuallyReviewed(quizId);
     }
 
     @Test

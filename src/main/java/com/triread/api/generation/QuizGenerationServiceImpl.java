@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class QuizGenerationServiceImpl implements QuizGenerationService {
+    private static final int MAX_MANUAL_RETRIES = 2;
     private final QuizGenerationMapper mapper;
     private final AdminQuizService adminQuizService;
     private final RuleBasedQuizValidator ruleValidator;
@@ -461,6 +462,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             throw new ApiException(HttpStatus.CONFLICT, "GENERATION_RETRY_NOT_ALLOWED",
                     "Only a failed generation can be retried.");
         }
+        if (mapper.reserveManualRetry(generationLogId, MAX_MANUAL_RETRIES) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "GENERATION_RETRY_LIMIT_REACHED",
+                    "A failed generation can be retried up to two times.");
+        }
         return generate(log.targetDate());
     }
 
@@ -701,6 +706,13 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         }
         return new GenerationDetail(log, validations,
                 mapper.findSourcesByGenerationLog(generationLogId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<QuizGenerationData.FailureSummary> getFailureSummaries(int requestedLimit) {
+        int limit = Math.max(1, Math.min(requestedLimit, 20));
+        return mapper.findFailureSummaries(limit);
     }
 
     private List<QuizValidation.Issue> deserializeIssues(String issuesJson) {

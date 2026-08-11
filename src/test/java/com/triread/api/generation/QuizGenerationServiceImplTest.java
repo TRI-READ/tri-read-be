@@ -249,7 +249,7 @@ class QuizGenerationServiceImplTest {
     void returnsGenerationLogWithStructuredValidationIssues() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
                 42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
-                "READY", 1, 95, null, NOW, NOW, NOW);
+                "READY", 1, 95, 0, null, NOW, NOW, NOW);
         when(mapper.findLog(42L)).thenReturn(log);
         when(mapper.findValidationResults(42L)).thenReturn(List.of(
                 new QuizGenerationData.ValidationResultRow(9L, 42L, 7L, 1, "AI", true, 95,
@@ -271,7 +271,7 @@ class QuizGenerationServiceImplTest {
     void listsGenerationLogsWithGlobalStatsAndPagination() {
         QuizGenerationData.GenerationLogRow log = new QuizGenerationData.GenerationLogRow(
                 42L, 7L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
-                "READY", 1, 95, null, NOW, NOW, NOW);
+                "READY", 1, 95, 0, null, NOW, NOW, NOW);
         when(mapper.countLogs(null, null)).thenReturn(27L);
         when(mapper.findLogs(null, null, 10, 10)).thenReturn(List.of(log));
         when(mapper.getStats()).thenReturn(new QuizGenerationData.GenerationStats(18L, 9L));
@@ -297,10 +297,11 @@ class QuizGenerationServiceImplTest {
         LocalDate date = LocalDate.of(2026, 7, 20);
         QuizGenerationData.GenerationLogRow failedLog = new QuizGenerationData.GenerationLogRow(
                 41L, null, date, "GEMINI", "generation-model", "g2/v3", 11L, 12L,
-                "FAILED", 3, null, "temporary failure", NOW, NOW, NOW);
+                "FAILED", 3, null, 0, "temporary failure", NOW, NOW, NOW);
         QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();
         QuizValidation.Result passed = new QuizValidation.Result(true, 100, List.of());
         when(mapper.findLog(41L)).thenReturn(failedLog);
+        when(mapper.reserveManualRetry(41L, 2)).thenReturn(1);
         when(aiGateway.generate(eq(date), anyList(), eq(GENERATION_PROMPT))).thenReturn(generated);
         when(ruleValidator.validate(generated)).thenReturn(passed);
         when(aiGateway.validate(generated, VALIDATION_PROMPT)).thenReturn(passed);
@@ -317,13 +318,27 @@ class QuizGenerationServiceImplTest {
     void rejectsRetryForSuccessfulGeneration() {
         QuizGenerationData.GenerationLogRow readyLog = new QuizGenerationData.GenerationLogRow(
                 41L, 10L, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3", 11L, 12L,
-                "READY", 1, 100, null, NOW, NOW, NOW);
+                "READY", 1, 100, 0, null, NOW, NOW, NOW);
         when(mapper.findLog(41L)).thenReturn(readyLog);
 
         assertThatThrownBy(() -> service.retry(41L))
                 .isInstanceOfSatisfying(ApiException.class,
                         exception -> assertThat(exception.getCode())
                                 .isEqualTo("GENERATION_RETRY_NOT_ALLOWED"));
+    }
+
+    @Test
+    void rejectsRetryAfterManualRetryLimit() {
+        QuizGenerationData.GenerationLogRow failedLog = new QuizGenerationData.GenerationLogRow(
+                41L, null, LocalDate.of(2026, 7, 20), "GEMINI", "generation-model", "g2/v3",
+                11L, 12L, "FAILED", 3, null, 2, "temporary failure", NOW, NOW, NOW);
+        when(mapper.findLog(41L)).thenReturn(failedLog);
+        when(mapper.reserveManualRetry(41L, 2)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.retry(41L))
+                .isInstanceOfSatisfying(ApiException.class,
+                        exception -> assertThat(exception.getCode())
+                                .isEqualTo("GENERATION_RETRY_LIMIT_REACHED"));
     }
 
     private AdminQuizService.QuizDetail detail(long quizId, LocalDate date, String status) {

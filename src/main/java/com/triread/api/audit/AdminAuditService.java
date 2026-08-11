@@ -2,6 +2,9 @@ package com.triread.api.audit;
 
 import com.triread.api.common.PageResponse;
 import java.util.Map;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -24,10 +27,30 @@ public class AdminAuditService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<AdminAuditData.AuditRow> getLogs(int requestedPage, int requestedSize) {
+    public PageResponse<AdminAuditData.AuditRow> getLogs(int requestedPage, int requestedSize,
+                                                         String action, String actor,
+                                                         LocalDate from, LocalDate to) {
         int page = PageResponse.page(requestedPage);
         int size = PageResponse.size(requestedSize);
-        return PageResponse.of(mapper.findAll(page * size, size), page, size, mapper.countAll());
+        String normalizedAction = text(action);
+        String normalizedActor = text(actor);
+        ZoneId seoul = ZoneId.of("Asia/Seoul");
+        Instant fromInstant = from == null ? null : from.atStartOfDay(seoul).toInstant();
+        Instant untilInstant = to == null ? null : to.plusDays(1).atStartOfDay(seoul).toInstant();
+        return PageResponse.of(
+                mapper.findAll(normalizedAction, normalizedActor, fromInstant, untilInstant,
+                        page * size, size),
+                page,
+                size,
+                mapper.countAll(normalizedAction, normalizedActor, fromInstant, untilInstant)
+        );
+    }
+
+    private String text(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private String json(Map<String, ?> details) {

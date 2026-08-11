@@ -10,6 +10,7 @@ public interface QuizGenerationService {
     GenerationResult retry(long generationLogId);
     GenerationLogPage getLogs(int page, int size, String status, LocalDate targetDate);
     GenerationDetail getLog(long generationLogId);
+    List<QuizGenerationData.FailureSummary> getFailureSummaries(int limit);
 
     record GenerationResult(long generationLogId, String status, int attemptCount,
                             int validationScore, boolean autoPublished,
