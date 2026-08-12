@@ -11,6 +11,7 @@ import com.triread.api.prompt.PromptTemplateService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class QuizGenerationServiceImpl implements QuizGenerationService {
     private static final int MAX_MANUAL_RETRIES = 2;
+    private static final int MIN_STALE_MINUTES = 10;
+    private static final int MAX_STALE_MINUTES = 240;
     private final QuizGenerationMapper mapper;
     private final AdminQuizService adminQuizService;
     private final RuleBasedQuizValidator ruleValidator;
@@ -70,6 +73,19 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             }
             throw exception;
         }
+    }
+
+    @Override
+    @Transactional
+    public StaleCleanupResult failStaleJobs(int requestedMinutes) {
+        int staleMinutes = Math.max(MIN_STALE_MINUTES,
+                Math.min(requestedMinutes, MAX_STALE_MINUTES));
+        Instant now = clock.instant();
+        String errorMessage = "STALE_GENERATION_TIMEOUT: Generation did not finish within "
+                + staleMinutes + " minutes.";
+        int failedCount = mapper.failStaleLogs(
+                now.minus(staleMinutes, ChronoUnit.MINUTES), now, errorMessage);
+        return new StaleCleanupResult(failedCount, staleMinutes);
     }
 
     private GenerationResult generateInternal(LocalDate targetDate) {

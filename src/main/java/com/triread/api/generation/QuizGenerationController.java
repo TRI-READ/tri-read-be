@@ -62,6 +62,17 @@ public class QuizGenerationController {
         return service.getFailureSummaries(limit);
     }
 
+    @PostMapping("/stale/cleanup")
+    public QuizGenerationService.StaleCleanupResult cleanupStale(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @RequestParam(defaultValue = "30") int staleMinutes) {
+        QuizGenerationService.StaleCleanupResult result = service.failStaleJobs(staleMinutes);
+        auditService.record(principal.userId(), "STALE_GENERATIONS_FAILED", "GENERATION_LOG",
+                null, Map.of("failedCount", result.failedCount(),
+                        "staleMinutes", result.staleMinutes()));
+        return result;
+    }
+
     @PostMapping("/{generationLogId}/retry")
     public ResponseEntity<QuizGenerationService.GenerationResult> retry(
             @AuthenticationPrincipal AuthPrincipal principal,
