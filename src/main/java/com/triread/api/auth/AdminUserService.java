@@ -38,6 +38,14 @@ public class AdminUserService {
         return PageResponse.of(users, page, size, total);
     }
 
+    @Transactional(readOnly = true)
+    public UserActivity getActivity(long userId) {
+        AuthUser user = requireUser(userId);
+        AdminUserData.ActivityStatsRow stats = authMapper.findActivityStats(userId);
+        List<AdminUserData.RecentAttemptRow> recentAttempts = authMapper.findRecentAttempts(userId, 10);
+        return new UserActivity(UserSummary.from(user), stats, recentAttempts);
+    }
+
     @Transactional
     public UserSummary updateRole(long currentAdminId, long userId, String role) {
         String newRole = normalizeRole(role);
@@ -168,4 +176,7 @@ public class AdminUserService {
                     user.getAppRole(), user.isEnabled(), user.getCreatedAt(), user.getLastLoginAt());
         }
     }
+
+    public record UserActivity(UserSummary user, AdminUserData.ActivityStatsRow stats,
+                               List<AdminUserData.RecentAttemptRow> recentAttempts) {}
 }

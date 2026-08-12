@@ -3,11 +3,38 @@
 <mapper namespace="com.triread.api.admin.AdminQuizMapper">
     <select id="findQuizzes" resultType="com.triread.api.admin.AdminQuizData$QuizRow">
         SELECT id AS quiz_set_id, challenge_date, variant_code, status, created_at, published_at
-        FROM quiz_sets ORDER BY challenge_date DESC NULLS LAST, id DESC
+        FROM quiz_sets qs
+        <where>
+            <if test="status != null">qs.status = #{status}</if>
+            <if test="challengeDate != null">AND qs.challenge_date = #{challengeDate}</if>
+            <if test="keyword != null">
+                AND EXISTS (
+                    SELECT 1 FROM passages p
+                    WHERE p.quiz_set_id = qs.id
+                      AND (p.title ILIKE '%' || #{keyword} || '%'
+                           OR p.topic ILIKE '%' || #{keyword} || '%'
+                           OR p.content ILIKE '%' || #{keyword} || '%')
+                )
+            </if>
+        </where>
+        ORDER BY challenge_date DESC NULLS LAST, id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
     <select id="countQuizzes" resultType="long">
-        SELECT COUNT(*) FROM quiz_sets
+        SELECT COUNT(*) FROM quiz_sets qs
+        <where>
+            <if test="status != null">qs.status = #{status}</if>
+            <if test="challengeDate != null">AND qs.challenge_date = #{challengeDate}</if>
+            <if test="keyword != null">
+                AND EXISTS (
+                    SELECT 1 FROM passages p
+                    WHERE p.quiz_set_id = qs.id
+                      AND (p.title ILIKE '%' || #{keyword} || '%'
+                           OR p.topic ILIKE '%' || #{keyword} || '%'
+                           OR p.content ILIKE '%' || #{keyword} || '%')
+                )
+            </if>
+        </where>
     </select>
     <select id="countPendingQuizzes" resultType="long">
         SELECT COUNT(*) FROM quiz_sets WHERE status IN ('DRAFT', 'REVIEWED')
@@ -54,6 +81,10 @@
         SET status = 'REVIEWED', ai_provider = #{aiProvider}, ai_model = #{aiModel},
             prompt_version = #{promptVersion}, generation_prompt_id = #{generationPromptId},
             validation_prompt_id = #{validationPromptId}
+        WHERE id = #{quizSetId} AND status = 'DRAFT'
+    </update>
+    <update id="markManuallyReviewed">
+        UPDATE quiz_sets SET status = 'REVIEWED'
         WHERE id = #{quizSetId} AND status = 'DRAFT'
     </update>
     <update id="updateDraftDate">

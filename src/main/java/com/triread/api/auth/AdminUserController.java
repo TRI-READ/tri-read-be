@@ -35,6 +35,11 @@ public class AdminUserController {
         return service.getUsers(page, size);
     }
 
+    @GetMapping("/{userId}/activity")
+    public AdminUserService.UserActivity activity(@PathVariable @Positive long userId) {
+        return service.getActivity(userId);
+    }
+
     @PatchMapping("/{userId}/role")
     public AdminUserService.UserSummary updateRole(
             @AuthenticationPrincipal AuthPrincipal principal,

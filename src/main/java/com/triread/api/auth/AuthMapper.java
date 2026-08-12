@@ -16,6 +16,13 @@ public interface AuthMapper {
 
     long countAll();
 
+    AdminUserData.ActivityStatsRow findActivityStats(long userId);
+
+    List<AdminUserData.RecentAttemptRow> findRecentAttempts(
+            @Param("userId") long userId,
+            @Param("limit") int limit
+    );
+
     int insert(AuthUser user);
 
     int updateLastLoginAt(

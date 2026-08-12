@@ -36,7 +36,7 @@
     <sql id="logColumns">
         id AS generation_log_id, quiz_set_id, target_date, ai_provider, ai_model,
         prompt_version, generation_prompt_id, validation_prompt_id,
-        status, attempt_count, validation_score, error_message,
+        status, attempt_count, validation_score, manual_retry_count, error_message,
         created_at, updated_at, completed_at
     </sql>
 
@@ -76,6 +76,32 @@
         SELECT <include refid="logColumns"/>
         FROM generation_logs
         WHERE id = #{generationLogId}
+    </select>
+
+    <update id="reserveManualRetry">
+        UPDATE generation_logs
+        SET manual_retry_count = manual_retry_count + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{generationLogId}
+          AND status = 'FAILED'
+          AND manual_retry_count &lt; #{maxRetries}
+    </update>
+
+    <select id="findFailureSummaries"
+            resultType="com.triread.api.generation.QuizGenerationData$FailureSummary">
+        SELECT CASE
+                   WHEN error_message IS NULL OR BTRIM(error_message) = '' THEN 'UNKNOWN'
+                   WHEN POSITION(':' IN error_message) &gt; 0
+                       THEN LEFT(error_message, POSITION(':' IN error_message) - 1)
+                   ELSE LEFT(error_message, 80)
+               END AS error_code,
+               COUNT(*) AS failure_count,
+               MAX(updated_at) AS last_occurred_at
+        FROM generation_logs
+        WHERE status = 'FAILED'
+        GROUP BY error_code
+        ORDER BY failure_count DESC, last_occurred_at DESC
+        LIMIT #{limit}
     </select>
 
     <select id="findValidationResults"
