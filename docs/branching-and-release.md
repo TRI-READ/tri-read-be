@@ -1,48 +1,38 @@
-# Branching And Release Policy
+# 브랜치 및 릴리스 정책
 
-TRI:READ backend uses `dev` as the integration branch and `main` as the production deployment branch.
+TRI:READ 백엔드는 `dev`를 개발 통합 브랜치로, `main`을 운영 배포 브랜치로 사용합니다.
 
-## Branch Roles
+## 브랜치 역할
 
-- `dev`: daily development branch. Feature branches and regular commits should land here first.
-- `main`: production branch. Deployments should be based on this branch only.
+- `dev`: 일상적인 개발과 기능 통합을 진행합니다.
+- `main`: 운영 배포 기준입니다. 직접 커밋하지 않고 PR을 통해서만 변경합니다.
 
-## Main Branch Protection
+## main 보호 규칙
 
-Direct commits to `main` cannot be blocked by GitHub Actions alone. Set this in GitHub repository settings:
+GitHub Ruleset에서 `main`에 다음 규칙을 적용합니다.
 
-1. Open `TRI-READ/tri-read-be`.
-2. Go to `Settings` -> `Rules` -> `Rulesets`.
-3. Create a branch ruleset for `main`.
-4. Enable:
-   - Restrict updates
-   - Require a pull request before merging
-   - Require status checks to pass
-   - Require branches to be up to date before merging
-   - Block force pushes
-   - Block deletions
-5. Add the `Backend CI / build` check as a required status check after it appears at least once.
-6. Enable auto-merge in repository settings if scheduled promotion should merge automatically after checks pass.
+- 병합 전 Pull Request 필수
+- `Backend CI / build` 상태 검사 통과 필수
+- 강제 푸시와 브랜치 삭제 차단
+- 운영 담당자를 제외한 직접 업데이트 제한
 
-## Initial Bootstrap
+## 자동 승격 절차
 
-Scheduled workflows run from the repository default branch. After the first `dev` push, create or merge the initial `dev` -> `main` pull request once, then set `main` as the default branch.
+`.github/workflows/promote-dev-to-main.yml`은 매일 한국 시간 오전 9시에 실행됩니다.
 
-After that, apply the `main` branch ruleset. From that point on, production changes should reach `main` only through pull requests.
+1. `dev`가 `main`보다 앞서 있는지 확인합니다.
+2. 변경이 있으면 `dev`에서 `main`으로 향하는 PR을 생성합니다.
+3. 이미 열린 승격 PR이 있으면 해당 PR을 재사용합니다.
+4. 필수 CI가 통과하면 자동 병합을 시도합니다.
+5. `main` CI 통과 후 OCI 배포 워크플로가 실행됩니다.
 
-## Scheduled Promotion
+승인이 필요한 규칙이 켜져 있으면 PR은 자동 병합되지 않고 승인을 기다립니다.
 
-`.github/workflows/promote-dev-to-main.yml` runs every day at 09:00 Asia/Seoul.
+## 릴리스 원칙
 
-The workflow:
+- 기능 커밋은 먼저 `dev`에 반영합니다.
+- 운영 배포는 검증된 `main` 커밋으로만 수행합니다.
+- 긴급 배포도 CI와 운영 스모크 테스트를 생략하지 않습니다.
+- 버전별 주요 변경 사항은 루트의 `CHANGELOG.md`에 기록합니다.
 
-1. Checks whether `dev` has commits that `main` does not have.
-2. Creates a `dev` -> `main` pull request when needed.
-3. Reuses an existing open promotion PR if one already exists.
-4. Enables auto-merge when repository rules and GitHub settings allow it.
-
-If branch protection requires approval, the PR will wait for approval instead of merging immediately.
-
-## Why This Shape
-
-This keeps `main` stable and deployment-oriented while allowing fast development on `dev`. CI validates changes before they can reach production. The scheduled promotion makes releases predictable, and the pull request keeps an auditable record of what moved from development to production.
+이 구조는 빠른 개발과 안정적인 운영 배포를 분리하면서, 무엇이 언제 운영으로 이동했는지 PR 기록으로 추적하기 위한 선택입니다.
