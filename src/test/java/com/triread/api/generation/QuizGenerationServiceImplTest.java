@@ -105,6 +105,19 @@ class QuizGenerationServiceImplTest {
     }
 
     @Test
+    void failsGenerationJobsThatHaveNotChangedForThirtyMinutes() {
+        String errorMessage = "STALE_GENERATION_TIMEOUT: Generation did not finish within 30 minutes.";
+        Instant staleBefore = Instant.parse("2026-07-12T23:30:00Z");
+        when(mapper.failStaleLogs(staleBefore, NOW, errorMessage)).thenReturn(2);
+
+        QuizGenerationService.StaleCleanupResult result = service.failStaleJobs(30);
+
+        assertThat(result.failedCount()).isEqualTo(2);
+        assertThat(result.staleMinutes()).isEqualTo(30);
+        verify(mapper).failStaleLogs(staleBefore, NOW, errorMessage);
+    }
+
+    @Test
     void retriesGenerationWhenRuleValidationFails() {
         LocalDate date = LocalDate.of(2026, 7, 20);
         QuizGenerationData.GeneratedQuiz generated = RuleBasedQuizValidatorTest.validGeneratedQuiz();

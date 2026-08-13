@@ -11,6 +11,7 @@ public interface QuizGenerationService {
     GenerationLogPage getLogs(int page, int size, String status, LocalDate targetDate);
     GenerationDetail getLog(long generationLogId);
     List<QuizGenerationData.FailureSummary> getFailureSummaries(int limit);
+    StaleCleanupResult failStaleJobs(int staleMinutes);
 
     record GenerationResult(long generationLogId, String status, int attemptCount,
                             int validationScore, boolean autoPublished,
@@ -28,4 +29,6 @@ public interface QuizGenerationService {
                              long successCount, long failureCount,
                              AiApiUsageService.TodayUsage apiUsage,
                              boolean aiValidationEnabled) {}
+
+    record StaleCleanupResult(int failedCount, int staleMinutes) {}
 }

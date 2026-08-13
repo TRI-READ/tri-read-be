@@ -87,6 +87,16 @@
           AND manual_retry_count &lt; #{maxRetries}
     </update>
 
+    <update id="failStaleLogs">
+        UPDATE generation_logs
+        SET status = 'FAILED',
+            error_message = #{errorMessage},
+            completed_at = #{completedAt},
+            updated_at = #{completedAt}
+        WHERE status IN ('GENERATING', 'VALIDATING', 'RETRYING')
+          AND updated_at &lt; #{staleBefore}
+    </update>
+
     <select id="findFailureSummaries"
             resultType="com.triread.api.generation.QuizGenerationData$FailureSummary">
         SELECT CASE

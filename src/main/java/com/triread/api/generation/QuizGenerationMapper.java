@@ -30,6 +30,9 @@ public interface QuizGenerationMapper {
     QuizGenerationData.GenerationLogRow findLog(long generationLogId);
     int reserveManualRetry(@Param("generationLogId") long generationLogId,
                            @Param("maxRetries") int maxRetries);
+    int failStaleLogs(@Param("staleBefore") Instant staleBefore,
+                      @Param("completedAt") Instant completedAt,
+                      @Param("errorMessage") String errorMessage);
     List<QuizGenerationData.FailureSummary> findFailureSummaries(@Param("limit") int limit);
     List<QuizGenerationData.ValidationResultRow> findValidationResults(long generationLogId);
     List<QuizGenerationData.RecentPassageRow> findRecentPassages(
