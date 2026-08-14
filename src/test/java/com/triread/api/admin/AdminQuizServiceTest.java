@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.triread.api.common.ApiException;
 import com.triread.api.quiz.QuizData;
@@ -171,6 +172,40 @@ class AdminQuizServiceTest {
     }
 
     @Test
+    void publishesSelectedQuizzesAtOnce() {
+        long firstQuizId = 21L;
+        long secondQuizId = 22L;
+        when(adminQuizMapper.findQuiz(firstQuizId)).thenReturn(quizRow(firstQuizId, "REVIEWED"));
+        when(adminQuizMapper.findQuiz(secondQuizId)).thenReturn(quizRow(secondQuizId, "REVIEWED"));
+        when(adminQuizMapper.publish(eq(firstQuizId), any())).thenReturn(1);
+        when(adminQuizMapper.publish(eq(secondQuizId), any())).thenReturn(1);
+
+        AdminQuizService.BulkResult result = service.publishAll(List.of(firstQuizId, secondQuizId));
+
+        assertThat(result.processedCount()).isEqualTo(2);
+        assertThat(result.quizSetIds()).containsExactly(firstQuizId, secondQuizId);
+        verify(adminQuizMapper).publish(eq(firstQuizId), any());
+        verify(adminQuizMapper).publish(eq(secondQuizId), any());
+    }
+
+    @Test
+    void deletesSelectedDraftsAtOnce() {
+        long firstQuizId = 31L;
+        long secondQuizId = 32L;
+        when(adminQuizMapper.findQuiz(firstQuizId)).thenReturn(quizRow(firstQuizId, "DRAFT"));
+        when(adminQuizMapper.findQuiz(secondQuizId)).thenReturn(quizRow(secondQuizId, "REVIEWED"));
+        when(adminQuizMapper.deleteDraft(firstQuizId)).thenReturn(1);
+        when(adminQuizMapper.deleteDraft(secondQuizId)).thenReturn(1);
+
+        AdminQuizService.BulkResult result = service.deleteAll(List.of(firstQuizId, secondQuizId));
+
+        assertThat(result.processedCount()).isEqualTo(2);
+        assertThat(result.quizSetIds()).containsExactly(firstQuizId, secondQuizId);
+        verify(adminQuizMapper).deleteDraft(firstQuizId);
+        verify(adminQuizMapper).deleteDraft(secondQuizId);
+    }
+
+    @Test
     void recyclesUnusedPublishedQuizIntoNextVariantCode() {
         LocalDate targetDate = LocalDate.of(2026, 7, 20);
         when(adminQuizMapper.findActiveVariantCodesByDate(targetDate)).thenReturn(List.of("A"));
@@ -182,5 +217,16 @@ class AdminQuizServiceTest {
         assertThat(recycled).isTrue();
         verify(adminQuizMapper).rescheduleOldestUnassignedPublishedQuiz(
                 LocalDate.of(2026, 7, 12), targetDate, "B");
+    }
+
+    private AdminQuizData.QuizRow quizRow(long quizId, String status) {
+        return new AdminQuizData.QuizRow(
+                quizId,
+                LocalDate.of(2026, 7, 20),
+                "A",
+                status,
+                Instant.now(),
+                null
+        );
     }
 }
