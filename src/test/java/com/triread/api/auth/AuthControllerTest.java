@@ -22,12 +22,14 @@ class AuthControllerTest {
 
     private final AuthService authService = mock(AuthService.class);
     private final LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
+    private final SignupAttemptService signupAttemptService = mock(SignupAttemptService.class);
     private final HttpSessionSecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
     private final SessionInvalidationService sessionInvalidationService =
             mock(SessionInvalidationService.class);
     private final AuthController authController =
-            new AuthController(authService, loginAttemptService, securityContextRepository,
+            new AuthController(authService, loginAttemptService, signupAttemptService,
+                    securityContextRepository,
                     sessionInvalidationService);
 
     @AfterEach
@@ -41,6 +43,7 @@ class AuthControllerTest {
                 new AuthService.AuthenticatedUser(3L, "reader", "Reader", "USER");
         when(authService.register("reader", "Reader", "1234")).thenReturn(user);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("127.0.0.1");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         AuthController.AuthResponse result = authController.signup(
@@ -59,6 +62,7 @@ class AuthControllerTest {
         assertThat(savedContext.getAuthentication().isAuthenticated()).isTrue();
         assertThat(savedContext.getAuthentication().getPrincipal())
                 .isEqualTo(new AuthPrincipal(3L, "reader", "Reader", "USER"));
+        verify(signupAttemptService).checkAndRecord("127.0.0.1");
         verify(sessionInvalidationService).registerSession(
                 request.getSession(false).getId(),
                 new AuthPrincipal(3L, "reader", "Reader", "USER"));

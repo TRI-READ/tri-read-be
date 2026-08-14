@@ -30,17 +30,20 @@ public class AuthController {
 
     private final AuthService authService;
     private final LoginAttemptService loginAttemptService;
+    private final SignupAttemptService signupAttemptService;
     private final SecurityContextRepository securityContextRepository;
     private final SessionInvalidationService sessionInvalidationService;
 
     public AuthController(
             AuthService authService,
             LoginAttemptService loginAttemptService,
+            SignupAttemptService signupAttemptService,
             SecurityContextRepository securityContextRepository,
             SessionInvalidationService sessionInvalidationService
     ) {
         this.authService = authService;
         this.loginAttemptService = loginAttemptService;
+        this.signupAttemptService = signupAttemptService;
         this.securityContextRepository = securityContextRepository;
         this.sessionInvalidationService = sessionInvalidationService;
     }
@@ -52,6 +55,7 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response
     ) {
+        signupAttemptService.checkAndRecord(request.getRemoteAddr());
         AuthService.AuthenticatedUser user = authService.register(
                 signupRequest.loginName(),
                 signupRequest.displayName(),
