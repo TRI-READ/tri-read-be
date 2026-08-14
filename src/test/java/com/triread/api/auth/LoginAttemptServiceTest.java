@@ -63,27 +63,33 @@ class LoginAttemptServiceTest {
     }
 
     @Test
-    void tracksSameLoginSeparatelyForEachAddress() {
-        service.recordFailure("203.0.113.1", "reader");
-        service.recordFailure("203.0.113.1", "reader");
+    void blocksSameLoginAcrossDifferentAddresses() {
         service.recordFailure("203.0.113.1", "reader");
         service.recordFailure("203.0.113.2", "reader");
+        service.recordFailure("203.0.113.3", "reader");
 
-        assertThatThrownBy(() -> service.assertAllowed("203.0.113.1", "reader"))
+        assertThatThrownBy(() -> service.assertAllowed("203.0.113.4", "reader"))
                 .isInstanceOf(ApiException.class);
-        assertThatCode(() -> service.assertAllowed("203.0.113.2", "reader"))
-                .doesNotThrowAnyException();
     }
 
     @Test
-    void clearLoginReturnsNumberOfRemovedAddresses() {
+    void blocksUsernameSprayingFromSameAddress() {
+        for (int index = 0; index < 15; index++) {
+            service.recordFailure("203.0.113.1", "reader" + index);
+        }
+
+        assertThatThrownBy(() -> service.assertAllowed("203.0.113.1", "next-reader"))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void clearLoginReturnsNumberOfRemovedAccountLocks() {
         lock("203.0.113.1", "reader");
-        lock("203.0.113.2", "reader");
         lock("203.0.113.3", "other");
 
         int cleared = service.clearLogin("READER");
 
-        assertThat(cleared).isEqualTo(2);
+        assertThat(cleared).isEqualTo(1);
         assertThat(service.getLockedAttempts())
                 .extracting(LoginAttemptService.LoginLockSummary::loginName)
                 .containsExactly("other");
