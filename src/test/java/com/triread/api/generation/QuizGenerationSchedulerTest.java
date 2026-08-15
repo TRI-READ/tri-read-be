@@ -32,6 +32,7 @@ class QuizGenerationSchedulerTest {
     @Mock QuizGenerationService generationService;
     @Mock AdminQuizService adminQuizService;
     @Mock OperationsService operationsService;
+    @Mock AiApiUsageService apiUsageService;
     private QuizGenerationProperties properties;
     private QuizGenerationScheduler scheduler;
 
@@ -43,7 +44,8 @@ class QuizGenerationSchedulerTest {
         properties.setInventoryDays(3);
         properties.setMaxJobsPerRun(3);
         scheduler = new QuizGenerationScheduler(
-                generationService, adminQuizService, properties, operationsService, MONDAY_CLOCK);
+                generationService, adminQuizService, properties, operationsService,
+                apiUsageService, MONDAY_CLOCK);
     }
 
     @Test
@@ -108,6 +110,32 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
+    void skipsAutomaticGenerationDuringRateLimitCooldown() {
+        when(apiUsageService.rateLimitRetryAt())
+                .thenReturn(Instant.parse("2026-07-13T10:00:00Z"));
+
+        scheduler.recoverInventory();
+
+        verifyNoInteractions(adminQuizService, generationService);
+    }
+
+    @Test
+    void stopsBatchImmediatelyWhenGeminiRateLimitIsReached() {
+        stubActiveCounts(Map.of());
+        LocalDate firstDate = LocalDate.of(2026, 7, 13);
+        when(apiUsageService.rateLimitRetryAt()).thenReturn(
+                null, Instant.parse("2026-07-13T10:00:00Z"));
+        doThrow(new ApiException(HttpStatus.TOO_MANY_REQUESTS,
+                "GEMINI_RATE_LIMITED", "Provider quota exhausted"))
+                .when(generationService).generate(firstDate);
+
+        scheduler.replenishInventory();
+
+        verify(generationService).generate(firstDate);
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 14));
+    }
+
+    @Test
     void reusesUnassignedPublishedSetsBeforeGenerating() {
         properties.setVariantsPerDate(1);
         stubActiveCounts(Map.of());
@@ -124,7 +152,8 @@ class QuizGenerationSchedulerTest {
         Clock saturdayClock = Clock.fixed(
                 Instant.parse("2026-07-18T03:00:00Z"), SEOUL);
         scheduler = new QuizGenerationScheduler(
-                generationService, adminQuizService, properties, operationsService, saturdayClock);
+                generationService, adminQuizService, properties, operationsService,
+                apiUsageService, saturdayClock);
         stubActiveCounts(Map.of());
 
         scheduler.replenishInventory();

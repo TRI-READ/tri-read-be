@@ -27,6 +27,7 @@ class AiApiUsageServiceTest {
     void setUp() {
         properties = new QuizGenerationProperties();
         properties.setMaxApiCallsPerDay(2);
+        properties.setRateLimitCooldownMinutes(360);
         service = new AiApiUsageService(mapper, properties,
                 Clock.fixed(Instant.parse("2026-07-19T01:00:00Z"), ZoneOffset.UTC));
     }
@@ -52,5 +53,22 @@ class AiApiUsageServiceTest {
         }).when(mapper).insertApiCall(any());
 
         assertThat(service.start(1L, "GEMINI", "flash", "GENERATION")).isEqualTo(9L);
+    }
+
+    @Test
+    void returnsRetryTimeDuringRateLimitCooldown() {
+        when(mapper.findLastApiFailureAt("GEMINI", "GEMINI_RATE_LIMITED"))
+                .thenReturn(Instant.parse("2026-07-18T23:00:00Z"));
+
+        assertThat(service.rateLimitRetryAt())
+                .isEqualTo(Instant.parse("2026-07-19T05:00:00Z"));
+    }
+
+    @Test
+    void returnsNullAfterRateLimitCooldownExpires() {
+        when(mapper.findLastApiFailureAt("GEMINI", "GEMINI_RATE_LIMITED"))
+                .thenReturn(Instant.parse("2026-07-18T18:00:00Z"));
+
+        assertThat(service.rateLimitRetryAt()).isNull();
     }
 }

@@ -15,6 +15,7 @@ public class QuizGenerationProperties {
     private int maxJobsPerRun = 3;
     private int maxJobsPerDay = 3;
     private int maxApiCallsPerDay = 6;
+    private int rateLimitCooldownMinutes = 360;
     private boolean aiValidationEnabled;
     private boolean sourceGroundingEnabled = true;
     private long retryDelayMs = 10_000;
@@ -40,6 +41,8 @@ public class QuizGenerationProperties {
     public void setMaxJobsPerDay(int maxJobsPerDay) { this.maxJobsPerDay = maxJobsPerDay; }
     public int getMaxApiCallsPerDay() { return maxApiCallsPerDay; }
     public void setMaxApiCallsPerDay(int maxApiCallsPerDay) { this.maxApiCallsPerDay = maxApiCallsPerDay; }
+    public int getRateLimitCooldownMinutes() { return rateLimitCooldownMinutes; }
+    public void setRateLimitCooldownMinutes(int rateLimitCooldownMinutes) { this.rateLimitCooldownMinutes = rateLimitCooldownMinutes; }
     public boolean isAiValidationEnabled() { return aiValidationEnabled; }
     public void setAiValidationEnabled(boolean aiValidationEnabled) { this.aiValidationEnabled = aiValidationEnabled; }
     public boolean isSourceGroundingEnabled() { return sourceGroundingEnabled; }
