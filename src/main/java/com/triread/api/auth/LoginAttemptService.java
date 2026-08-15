@@ -19,8 +19,10 @@ import org.springframework.stereotype.Service;
 public class LoginAttemptService {
 
     private static final int MAX_TRACKED_KEYS = 10_000;
+    private static final int ADDRESS_FAILURE_MULTIPLIER = 5;
 
-    private final Map<String, AttemptWindow> attempts = new ConcurrentHashMap<>();
+    private final Map<String, AttemptWindow> loginAttempts = new ConcurrentHashMap<>();
+    private final Map<String, AttemptWindow> addressAttempts = new ConcurrentHashMap<>();
     private final Clock clock;
     private final int maxFailures;
     private final Duration window;
@@ -40,35 +42,56 @@ public class LoginAttemptService {
     }
 
     public void assertAllowed(String clientAddress, String loginName) {
-        String key = key(clientAddress, loginName);
+        Instant now = clock.instant();
+        assertWindowAllowed(loginAttempts, normalizeLogin(loginName), maxFailures, now);
+        assertWindowAllowed(
+                addressAttempts,
+                normalizeAddress(clientAddress),
+                maxFailures * ADDRESS_FAILURE_MULTIPLIER,
+                now
+        );
+    }
+
+    private void assertWindowAllowed(Map<String, AttemptWindow> attempts,
+                                     String key,
+                                     int failureLimit,
+                                     Instant now) {
         AttemptWindow current = attempts.get(key);
         if (current == null) {
             return;
         }
-        if (current.expiresAt().isBefore(clock.instant())) {
+        if (current.expiresAt().isBefore(now)) {
             attempts.remove(key, current);
             return;
         }
-        if (current.failures() >= maxFailures) {
+        if (current.failures() >= failureLimit) {
             throw rateLimited();
         }
     }
 
     public void recordFailure(String clientAddress, String loginName) {
         Instant now = clock.instant();
-        if (attempts.size() >= 100) {
+        if (trackedKeyCount() >= 100) {
             removeExpired(now);
         }
-        String key = key(clientAddress, loginName);
-        if (!attempts.containsKey(key) && attempts.size() >= MAX_TRACKED_KEYS) {
-            throw rateLimited();
-        }
-        attempts.compute(key, (ignored, current) ->
-                nextAttempt(current, clientAddress, loginName, now));
+        recordAttempt(
+                loginAttempts,
+                normalizeLogin(loginName),
+                clientAddress,
+                loginName,
+                now
+        );
+        recordAttempt(
+                addressAttempts,
+                normalizeAddress(clientAddress),
+                clientAddress,
+                "",
+                now
+        );
     }
 
     public void recordSuccess(String clientAddress, String loginName) {
-        attempts.remove(key(clientAddress, loginName));
+        loginAttempts.remove(normalizeLogin(loginName));
     }
 
     public List<LoginLockSummary> getLockedAttempts() {
@@ -76,7 +99,7 @@ public class LoginAttemptService {
         removeExpired(now);
 
         List<LoginLockSummary> lockedAttempts = new ArrayList<>();
-        for (AttemptWindow attempt : attempts.values()) {
+        for (AttemptWindow attempt : loginAttempts.values()) {
             if (attempt.failures() >= maxFailures) {
                 lockedAttempts.add(toSummary(attempt));
             }
@@ -87,13 +110,32 @@ public class LoginAttemptService {
 
     public int clearLogin(String loginName) {
         String normalized = normalizeLogin(loginName);
-        int before = attempts.size();
-        attempts.entrySet().removeIf(entry -> entry.getValue().loginName().equals(normalized));
-        return before - attempts.size();
+        return loginAttempts.remove(normalized) == null ? 0 : 1;
     }
 
     private void removeExpired(Instant now) {
+        removeExpired(loginAttempts, now);
+        removeExpired(addressAttempts, now);
+    }
+
+    private void removeExpired(Map<String, AttemptWindow> attempts, Instant now) {
         attempts.entrySet().removeIf(entry -> entry.getValue().expiresAt().isBefore(now));
+    }
+
+    private void recordAttempt(Map<String, AttemptWindow> attempts,
+                               String key,
+                               String clientAddress,
+                               String loginName,
+                               Instant now) {
+        if (!attempts.containsKey(key) && trackedKeyCount() >= MAX_TRACKED_KEYS) {
+            throw rateLimited();
+        }
+        attempts.compute(key, (ignored, current) ->
+                nextAttempt(current, clientAddress, loginName, now));
+    }
+
+    private int trackedKeyCount() {
+        return loginAttempts.size() + addressAttempts.size();
     }
 
     private AttemptWindow nextAttempt(
@@ -125,10 +167,6 @@ public class LoginAttemptService {
                 attempt.failures(),
                 attempt.expiresAt()
         );
-    }
-
-    private String key(String clientAddress, String loginName) {
-        return normalizeAddress(clientAddress) + ':' + normalizeLogin(loginName);
     }
 
     private String normalizeAddress(String clientAddress) {

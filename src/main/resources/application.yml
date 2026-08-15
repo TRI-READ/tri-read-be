@@ -47,6 +47,11 @@ app:
     login-rate-limit:
       max-failures: ${LOGIN_RATE_LIMIT_MAX_FAILURES:10}
       window: ${LOGIN_RATE_LIMIT_WINDOW:10m}
+    signup-rate-limit:
+      short-limit: ${SIGNUP_RATE_LIMIT_SHORT_LIMIT:5}
+      short-window: ${SIGNUP_RATE_LIMIT_SHORT_WINDOW:10m}
+      daily-limit: ${SIGNUP_RATE_LIMIT_DAILY_LIMIT:10}
+      daily-window: ${SIGNUP_RATE_LIMIT_DAILY_WINDOW:24h}
   quiz-generation:
     enabled: ${QUIZ_GENERATION_ENABLED:false}
     auto-publish: ${QUIZ_AUTO_PUBLISH:false}
