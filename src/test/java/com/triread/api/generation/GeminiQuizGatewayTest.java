@@ -31,6 +31,7 @@ class GeminiQuizGatewayTest {
         assertThat(properties.getGemini().getValidationModel()).isEqualTo("gemini-3.1-flash-lite");
         assertThat(properties.getGemini().getSourceModel()).isEqualTo("gemini-3.1-flash-lite");
         assertThat(properties.getGemini().getPromptVersion()).isEqualTo("v2");
+        assertThat(properties.isSourceGroundingEnabled()).isFalse();
     }
 
     @Test

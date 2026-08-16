@@ -99,6 +99,7 @@ class QuizGenerationServiceImplTest {
         assertThat(result.status()).isEqualTo("READY");
         assertThat(result.validationScore()).isEqualTo(96);
         assertThat(result.autoPublished()).isFalse();
+        verify(aiGateway, never()).discoverSources(any(LocalDate.class), anyList());
         verify(mapper, times(3)).insertValidationResult(any());
         verify(mapper).updateLog(eq(42L), eq(7L), eq("READY"), eq(1), eq(96),
                 anyString(), isNull(), eq(NOW), eq(NOW));
