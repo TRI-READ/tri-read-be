@@ -64,7 +64,7 @@ app:
     max-api-calls-per-day: ${QUIZ_GENERATION_MAX_API_CALLS_PER_DAY:6}
     rate-limit-cooldown-minutes: ${QUIZ_GENERATION_RATE_LIMIT_COOLDOWN_MINUTES:360}
     ai-validation-enabled: ${QUIZ_AI_VALIDATION_ENABLED:false}
-    source-grounding-enabled: ${QUIZ_SOURCE_GROUNDING_ENABLED:true}
+    source-grounding-enabled: ${QUIZ_SOURCE_GROUNDING_ENABLED:false}
     retry-delay-ms: ${QUIZ_GENERATION_RETRY_DELAY_MS:10000}
     cron: ${QUIZ_GENERATION_CRON:0 10 3 * * *}
     recovery-cron: ${QUIZ_GENERATION_RECOVERY_CRON:0 30 5 * * *}

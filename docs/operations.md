@@ -23,10 +23,31 @@
 
 ### Gemini 생성이 반복 실패할 때
 
-- 현재 설정한 모델이 사용 가능한지 확인합니다.
-- 일일 호출 한도와 재시도 횟수를 확인합니다.
+- `404 NOT_FOUND`이면 설정 모델이 폐기됐거나 현재 프로젝트에서 사용할 수 없는지 확인하고 지원 모델로 변경합니다.
+- `429 RESOURCE_EXHAUSTED`이면 API 키 존재 여부가 아니라 해당 모델 또는 기능의 공급자 할당량을 확인합니다.
+- 일반 Gemini 모델 호출량과 Google Search Grounding 할당량은 별개입니다. AI Studio에서 일반 모델 한도가 남아 있어도 Grounding 호출은 실패할 수 있습니다.
+- 관리자 화면의 `오늘 Gemini 호출` 수치는 서비스 내부 일일 호출 방어선이며 Google의 실제 할당량이 아닙니다.
+- Search Grounding은 기본 비활성화입니다. 프로젝트와 요금제가 지원할 때만 `QUIZ_SOURCE_GROUNDING_ENABLED=true`로 켭니다.
+- `429`를 짧은 간격으로 무조건 재시도하지 않습니다. Grounding을 끈 상태에서 일반 생성이 정상인지 먼저 확인합니다.
 - 실패 원인이 품질 검증이면 지문 생성 프롬프트와 검증 상세를 확인합니다.
 - API 키나 실제 비밀값은 로그, 이슈, 문서에 남기지 않습니다.
+
+참고 문서:
+
+- [Gemini API 가격 및 무료 등급](https://ai.google.dev/gemini-api/docs/pricing)
+- [Gemini API 호출 한도](https://ai.google.dev/gemini-api/docs/rate-limits)
+- [Gemini API 오류 코드](https://ai.google.dev/gemini-api/docs/api-errors)
+
+### Windows에서 Gradle 테스트 클래스를 찾지 못할 때
+
+- 저장소 경로에 한글이 있으면 Gradle 테스트 워커의 클래스패스가 깨져 `ClassNotFoundException`이 발생할 수 있습니다.
+- 컴파일된 테스트 클래스가 존재하는데도 테스트 실행 직후 클래스를 찾지 못한다면 코드 오류보다 경로 인코딩을 먼저 확인합니다.
+- 이 프로젝트는 `TRI_READ_BUILD_DIR` 환경변수로 빌드 산출물 경로를 분리할 수 있습니다. 영문 경로를 지정한 뒤 다시 실행합니다.
+
+```powershell
+$env:TRI_READ_BUILD_DIR='C:\Users\admin\Documents\tri-read-build'
+.\gradlew.bat --no-daemon clean test
+```
 
 ### 배포 후 장애가 발생했을 때
 

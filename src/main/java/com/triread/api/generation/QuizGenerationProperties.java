@@ -17,7 +17,7 @@ public class QuizGenerationProperties {
     private int maxApiCallsPerDay = 6;
     private int rateLimitCooldownMinutes = 360;
     private boolean aiValidationEnabled;
-    private boolean sourceGroundingEnabled = true;
+    private boolean sourceGroundingEnabled;
     private long retryDelayMs = 10_000;
     private String cron = "0 10 3 * * *";
     private String recoveryCron = "0 30 5 * * *";
