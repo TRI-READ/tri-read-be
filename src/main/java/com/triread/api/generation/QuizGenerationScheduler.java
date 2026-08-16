@@ -5,6 +5,7 @@ import com.triread.api.common.ApiException;
 import com.triread.api.operations.OperationsService;
 import java.time.Clock;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Stream;
@@ -22,17 +23,20 @@ public class QuizGenerationScheduler {
     private final AdminQuizService adminQuizService;
     private final QuizGenerationProperties properties;
     private final OperationsService operationsService;
+    private final AiApiUsageService apiUsageService;
     private final Clock clock;
 
     public QuizGenerationScheduler(QuizGenerationService generationService,
                                    AdminQuizService adminQuizService,
                                    QuizGenerationProperties properties,
                                    OperationsService operationsService,
+                                   AiApiUsageService apiUsageService,
                                    Clock clock) {
         this.generationService = generationService;
         this.adminQuizService = adminQuizService;
         this.properties = properties;
         this.operationsService = operationsService;
+        this.apiUsageService = apiUsageService;
         this.clock = clock;
     }
 
@@ -45,10 +49,19 @@ public class QuizGenerationScheduler {
     private void runInventoryJob(String trigger) {
         long eventId = operationsService.startEvent(
                 "QUIZ_SCHEDULER", trigger + " inventory replenishment started");
+        Instant retryAt = apiUsageService.rateLimitRetryAt();
+        if (retryAt != null) {
+            String message = trigger + " inventory replenishment skipped: Gemini cooldown until "
+                    + retryAt;
+            log.info(message);
+            operationsService.completeEvent(eventId, true, message);
+            return;
+        }
         int jobsStarted = 0;
         int recycled = 0;
         int failed = 0;
         boolean success = false;
+        String resultMessage = null;
         int inventoryDays = Math.max(1, properties.getInventoryDays());
         int maxJobsPerRun = Math.max(1, properties.getMaxJobsPerRun());
         List<LocalDate> targetDates = upcomingWeekdays(LocalDate.now(clock), inventoryDays);
@@ -71,10 +84,20 @@ public class QuizGenerationScheduler {
                         generationService.generate(targetDate);
                         activeCount++;
                     } catch (RuntimeException exception) {
-                        if (exception instanceof ApiException apiException
-                                && "QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(apiException.getCode())) {
+                        if (isDailyLimit(exception)) {
                             log.info("Daily quiz generation budget reached; stopping inventory replenishment");
                             success = true;
+                            resultMessage = trigger
+                                    + " inventory replenishment stopped: daily generation limit reached";
+                            return;
+                        }
+                        if (isRateLimited(exception)) {
+                            failed++;
+                            retryAt = apiUsageService.rateLimitRetryAt();
+                            resultMessage = trigger
+                                    + " inventory replenishment stopped: Gemini rate limit reached"
+                                    + (retryAt == null ? "" : ", retry after " + retryAt);
+                            log.warn(resultMessage);
                             return;
                         }
                         log.error("Scheduled quiz generation failed for {}", targetDate, exception);
@@ -86,8 +109,9 @@ public class QuizGenerationScheduler {
             success = failed == 0;
         } finally {
             operationsService.completeEvent(eventId, success,
-                    trigger + " inventory replenishment finished: generated="
-                            + jobsStarted + ", recycled=" + recycled + ", failed=" + failed);
+                    resultMessage != null ? resultMessage
+                            : trigger + " inventory replenishment finished: generated="
+                                    + jobsStarted + ", recycled=" + recycled + ", failed=" + failed);
         }
     }
 
@@ -95,6 +119,19 @@ public class QuizGenerationScheduler {
     public void recoverInventory() {
         if (!properties.isEnabled()) return;
         runInventoryJob("RECOVERY");
+    }
+
+    private boolean isDailyLimit(RuntimeException exception) {
+        if (!(exception instanceof ApiException apiException)) {
+            return false;
+        }
+        return "QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(apiException.getCode())
+                || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(apiException.getCode());
+    }
+
+    private boolean isRateLimited(RuntimeException exception) {
+        return exception instanceof ApiException apiException
+                && "GEMINI_RATE_LIMITED".equals(apiException.getCode());
     }
 
     private List<LocalDate> upcomingWeekdays(LocalDate today, int inventoryDays) {

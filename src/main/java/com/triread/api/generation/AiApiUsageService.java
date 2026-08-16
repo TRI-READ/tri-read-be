@@ -2,6 +2,7 @@ package com.triread.api.generation;
 
 import com.triread.api.common.ApiException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import org.springframework.http.HttpStatus;
@@ -49,6 +50,16 @@ public class AiApiUsageService {
         QuizGenerationData.ApiUsageStats stats = mapper.getApiUsageStats(today.from(), today.until());
         return new TodayUsage(stats.totalCount(), stats.successCount(), stats.failureCount(),
                 Math.max(1, properties.getMaxApiCallsPerDay()));
+    }
+
+    public Instant rateLimitRetryAt() {
+        Instant failedAt = mapper.findLastApiFailureAt("GEMINI", "GEMINI_RATE_LIMITED");
+        if (failedAt == null) {
+            return null;
+        }
+        int cooldownMinutes = Math.max(1, properties.getRateLimitCooldownMinutes());
+        Instant retryAt = failedAt.plus(Duration.ofMinutes(cooldownMinutes));
+        return retryAt.isAfter(clock.instant()) ? retryAt : null;
     }
 
     private TimeRange today() {

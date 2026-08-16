@@ -1,6 +1,7 @@
 package com.triread.api.operations;
 
 import com.triread.api.auth.LoginAttemptService;
+import com.triread.api.generation.AiApiUsageService;
 import com.triread.api.generation.QuizGenerationProperties;
 import java.lang.management.ManagementFactory;
 import java.time.Clock;
@@ -19,15 +20,18 @@ public class OperationsService {
 
     private final OperationsMapper mapper;
     private final LoginAttemptService loginAttemptService;
+    private final AiApiUsageService apiUsageService;
     private final QuizGenerationProperties properties;
     private final Clock clock;
     private final String version;
 
     public OperationsService(OperationsMapper mapper, LoginAttemptService loginAttemptService,
+                             AiApiUsageService apiUsageService,
                              QuizGenerationProperties properties, Clock clock,
                              @Value("${app.version:dev}") String version) {
         this.mapper = mapper;
         this.loginAttemptService = loginAttemptService;
+        this.apiUsageService = apiUsageService;
         this.properties = properties;
         this.clock = clock;
         this.version = version;
@@ -61,7 +65,7 @@ public class OperationsService {
 
         return new OperationsData.Summary(
                 "UP", "UP", mapper.databaseSizeBytes(), uptime, version, startedAt,
-                aiStats, aiErrors, qualityStats, inventory,
+                aiStats, aiErrors, apiUsageService.rateLimitRetryAt(), qualityStats, inventory,
                 recentFailures, recentAdminActions, lockedLoginAttempts,
                 lastSchedulerRun, nextRun(properties.getCron()),
                 lastBackup, mapper.countGroundedBriefs(),

@@ -42,6 +42,7 @@ public final class OperationsData {
             Instant startedAt,
             AiStats aiToday,
             List<ErrorCount> aiErrorsToday,
+            Instant geminiRetryAt,
             QualityStats quality,
             List<InventoryRow> inventory,
             List<FailureRow> recentFailures,

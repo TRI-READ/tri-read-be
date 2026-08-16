@@ -419,6 +419,10 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     private String errorSummary(RuntimeException exception) {
         if (exception instanceof ApiException) {
             ApiException apiException = (ApiException) exception;
+            if ("GEMINI_RATE_LIMITED".equals(apiException.getCode())) {
+                return "GEMINI_RATE_LIMITED: Gemini API quota exceeded. "
+                        + "Automatic generation is paused.";
+            }
             return apiException.getCode() + ": " + apiException.getMessage();
         }
         return exception.getClass().getSimpleName() + ": " + exception.getMessage();
@@ -508,8 +512,7 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
     }
 
     private boolean isTransient(ApiException exception) {
-        return "GEMINI_RATE_LIMITED".equals(exception.getCode())
-                || "GEMINI_UNAVAILABLE".equals(exception.getCode());
+        return "GEMINI_UNAVAILABLE".equals(exception.getCode());
     }
 
     private void waitBeforeRetry(int attempt) {

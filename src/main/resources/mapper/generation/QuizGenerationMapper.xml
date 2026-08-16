@@ -158,6 +158,17 @@
         WHERE created_at &gt;= #{from} AND created_at &lt; #{until}
     </select>
 
+    <select id="findLastApiFailureAt" resultType="java.time.Instant">
+        SELECT completed_at
+        FROM ai_api_calls
+        WHERE provider = #{provider}
+          AND status = 'FAILED'
+          AND error_code = #{errorCode}
+          AND completed_at IS NOT NULL
+        ORDER BY completed_at DESC
+        LIMIT 1
+    </select>
+
     <select id="findSourceBrief"
             resultType="com.triread.api.generation.QuizGenerationData$SourceBriefRow">
         SELECT id AS source_brief_id, target_date, status, model, briefing_text, error_message
