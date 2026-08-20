@@ -56,7 +56,6 @@ class QuizGenerationServiceImplTest {
     void setUp() {
         properties = new QuizGenerationProperties();
         properties.setMaxAttempts(2);
-        properties.setMaxJobsPerDay(3);
         properties.setPassScore(90);
         properties.setRetryDelayMs(0);
         properties.setAiValidationEnabled(true);
@@ -176,22 +175,6 @@ class QuizGenerationServiceImplTest {
                                 .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));
         verify(mapper, never()).insertLog(any());
         verify(aiGateway, never()).generate(any(LocalDate.class), anyList(), any());
-    }
-
-    @Test
-    void rejectsGenerationWhenDailyJobBudgetIsExhausted() {
-        LocalDate date = LocalDate.of(2026, 7, 20);
-        when(mapper.countLogsCreatedBetween(
-                Instant.parse("2026-07-13T00:00:00Z"),
-                Instant.parse("2026-07-14T00:00:00Z"))).thenReturn(3L);
-
-        assertThatThrownBy(() -> service.generate(date))
-                .isInstanceOfSatisfying(ApiException.class, exception ->
-                        assertThat(exception.getCode())
-                                .isEqualTo("QUIZ_GENERATION_DAILY_LIMIT_REACHED"));
-        verify(mapper, never()).insertLog(any());
-        verify(aiGateway, never()).generate(
-                any(LocalDate.class), anyList(), any());
     }
 
     @Test

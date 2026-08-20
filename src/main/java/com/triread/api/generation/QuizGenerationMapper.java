@@ -24,8 +24,6 @@ public interface QuizGenerationMapper {
                                                         @Param("offset") int offset,
                                                         @Param("limit") int limit);
     long countLogs(@Param("status") String status, @Param("targetDate") LocalDate targetDate);
-    long countLogsCreatedBetween(@Param("from") Instant from,
-                                 @Param("until") Instant until);
     QuizGenerationData.GenerationStats getStats();
     QuizGenerationData.GenerationLogRow findLog(long generationLogId);
     int reserveManualRetry(@Param("generationLogId") long generationLogId,

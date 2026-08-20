@@ -60,7 +60,6 @@ app:
     variants-per-date: ${QUIZ_VARIANTS_PER_DATE:3}
     inventory-days: ${QUIZ_INVENTORY_DAYS:3}
     max-jobs-per-run: ${QUIZ_GENERATION_MAX_JOBS_PER_RUN:3}
-    max-jobs-per-day: ${QUIZ_GENERATION_MAX_JOBS_PER_DAY:3}
     max-api-calls-per-day: ${QUIZ_GENERATION_MAX_API_CALLS_PER_DAY:6}
     rate-limit-cooldown-minutes: ${QUIZ_GENERATION_RATE_LIMIT_COOLDOWN_MINUTES:360}
     ai-validation-enabled: ${QUIZ_AI_VALIDATION_ENABLED:false}

@@ -23,6 +23,8 @@
 
 ### Gemini 생성이 반복 실패할 때
 
+- 관리자 화면에서 호출 한도 오류가 보이지만 Google AI Studio에 요청 기록이 없다면 `ai_api_calls`를 먼저 확인합니다. `generation_logs` 개수는 일일 호출 한도에 영향을 주지 않습니다. 같은 현상이 계속되면 운영 서버가 이전 버전을 실행 중인지 배포 상태를 확인합니다.
+
 - `404 NOT_FOUND`이면 설정 모델이 폐기됐거나 현재 프로젝트에서 사용할 수 없는지 확인하고 지원 모델로 변경합니다.
 - `429 RESOURCE_EXHAUSTED`이면 API 키 존재 여부가 아니라 해당 모델 또는 기능의 공급자 할당량을 확인합니다.
 - 일반 Gemini 모델 호출량과 Google Search Grounding 할당량은 별개입니다. AI Studio에서 일반 모델 한도가 남아 있어도 Grounding 호출은 실패할 수 있습니다.
