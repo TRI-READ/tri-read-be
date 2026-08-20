@@ -85,10 +85,10 @@ public class QuizGenerationScheduler {
                         activeCount++;
                     } catch (RuntimeException exception) {
                         if (isDailyLimit(exception)) {
-                            log.info("Daily quiz generation budget reached; stopping inventory replenishment");
-                            success = true;
-                            resultMessage = trigger
-                                    + " inventory replenishment stopped: daily generation limit reached";
+                log.info("Daily Gemini API call limit reached; stopping inventory replenishment");
+                success = true;
+                resultMessage = trigger
+                        + " inventory replenishment stopped: daily Gemini API call limit reached";
                             return;
                         }
                         if (isRateLimited(exception)) {
@@ -125,8 +125,7 @@ public class QuizGenerationScheduler {
         if (!(exception instanceof ApiException apiException)) {
             return false;
         }
-        return "QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(apiException.getCode())
-                || "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(apiException.getCode());
+        return "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(apiException.getCode());
     }
 
     private boolean isRateLimited(RuntimeException exception) {

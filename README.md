@@ -187,7 +187,7 @@ Google Search Grounding을 사용하는 출처 탐색은 선택 기능이며 기
 
 기본 생성 스케줄은 매일 새벽에 향후 평일 3일의 재고를 확인하고, 30분 뒤 한 차례 더 부족분을 복구합니다. 시간은 `QUIZ_GENERATION_CRON`, `QUIZ_GENERATION_RECOVERY_CRON`으로 조정합니다. 각 날짜는 최대 3세트를 보유하며 사용되지 않은 기존 발행 문제를 우선 재배정해 Gemini 호출을 줄입니다.
 
-호출량 보호를 위해 기본값은 스케줄 실행당 최대 3개 작업, 하루 최대 3개 작업, 작업당 최대 2회 시도, 실제 Gemini API 호출 하루 최대 6회입니다. 두 한도는 서울 기준 자정에 초기화되며 실패한 생성도 사용량에 포함됩니다. Gemini가 `429 Too Many Requests`를 반환하면 같은 자동 실행의 남은 생성을 즉시 중단하고 기본 6시간 동안 자동 생성만 쉬게 합니다. 수동 재시도는 계속 사용할 수 있으며, 냉각 시간은 `QUIZ_GENERATION_RATE_LIMIT_COOLDOWN_MINUTES`로 조정합니다. 중복 검사는 최근 DB 지문을 이용한 로컬 검사로 처리하고, 선택적으로 켠 AI 검증은 로컬 규칙과 중복 검사를 통과한 결과에만 수행합니다. `QUIZ_INVENTORY_DAYS`, `QUIZ_GENERATION_MAX_JOBS_PER_RUN`, `QUIZ_GENERATION_MAX_JOBS_PER_DAY`, `QUIZ_GENERATION_MAX_ATTEMPTS`, `QUIZ_GENERATION_MAX_API_CALLS_PER_DAY`로 값을 조정할 수 있습니다. 관리자 운영 현황에서 오늘의 호출량, 오류 코드와 자동 생성 재개 시각을 확인할 수 있습니다.
+호출량 보호를 위해 기본값은 스케줄 실행당 최대 3개 작업, 작업당 최대 2회 시도, 실제 Gemini API 호출 하루 최대 6회입니다. 일일 호출 한도는 Gemini 요청 직전에 기록된 외부 API 호출만 집계하며 서울 기준 자정에 초기화됩니다. 생성 로그의 성공·실패 건수는 호출 한도에 포함되지 않습니다. Gemini가 `429 Too Many Requests`를 반환하면 같은 자동 실행의 남은 생성을 즉시 중단하고 기본 6시간 동안 자동 생성만 쉬게 합니다. 수동 재시도는 계속 사용할 수 있으며, 냉각 시간은 `QUIZ_GENERATION_RATE_LIMIT_COOLDOWN_MINUTES`로 조정합니다. 중복 검사는 최근 DB 지문을 이용한 로컬 검사로 처리하고, 선택적으로 켠 AI 검증은 로컬 규칙과 중복 검사를 통과한 결과에만 수행합니다. `QUIZ_INVENTORY_DAYS`, `QUIZ_GENERATION_MAX_JOBS_PER_RUN`, `QUIZ_GENERATION_MAX_ATTEMPTS`, `QUIZ_GENERATION_MAX_API_CALLS_PER_DAY`로 값을 조정할 수 있습니다. 관리자 운영 현황에서 오늘의 호출량, 오류 코드와 자동 생성 재개 시각을 확인할 수 있습니다.
 
 생성용과 검증용 프롬프트는 DB에서 독립된 불변 버전으로 관리합니다. 새 버전을 저장해도 즉시 적용되지 않으며 관리자가 활성화해야 다음 생성 작업부터 사용됩니다. 활성화 이력은 롤백 기록을 포함해 보존하고, 생성 작업은 시작할 때 활성 프롬프트 두 개를 한 번 읽어 같은 작업의 모든 재시도에 고정합니다. 생성 로그와 퀴즈 세트에는 실제 사용한 두 프롬프트 ID가 저장됩니다.
 

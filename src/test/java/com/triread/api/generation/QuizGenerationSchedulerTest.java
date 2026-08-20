@@ -96,11 +96,11 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void stopsImmediatelyWhenDailyBudgetIsExhausted() {
+    void stopsImmediatelyWhenDailyApiBudgetIsExhausted() {
         stubActiveCounts(Map.of());
         LocalDate firstDate = LocalDate.of(2026, 7, 13);
         doThrow(new ApiException(HttpStatus.TOO_MANY_REQUESTS,
-                "QUIZ_GENERATION_DAILY_LIMIT_REACHED", "Daily limit reached"))
+            "QUIZ_GENERATION_API_DAILY_LIMIT_REACHED", "Daily limit reached"))
                 .when(generationService).generate(firstDate);
 
         scheduler.replenishInventory();
