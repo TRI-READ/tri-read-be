@@ -248,20 +248,20 @@ class QuizServiceTest {
     }
 
     @Test
-    void saturdayUsesThePreviousFridayQuiz() {
-        LocalDate friday = LocalDate.of(2026, 7, 17);
+    void saturdayUsesItsOwnQuizForOptionalMakeUp() {
+        LocalDate saturday = LocalDate.of(2026, 7, 18);
         Clock weekendClock = Clock.fixed(
                 Instant.parse("2026-07-18T03:00:00Z"),
                 ZoneId.of("Asia/Seoul")
         );
         quizService = new QuizService(quizMapper, weekendClock);
-        when(quizMapper.findTodayQuiz(friday, USER_ID)).thenReturn(quizSet(friday, "A"));
+        when(quizMapper.findTodayQuiz(saturday, USER_ID)).thenReturn(quizSet(saturday, "A"));
         givenCompleteContent();
 
         QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
 
-        assertThat(result.challengeDate()).isEqualTo(friday);
-        verify(quizMapper).findTodayQuiz(friday, USER_ID);
+        assertThat(result.challengeDate()).isEqualTo(saturday);
+        verify(quizMapper).findTodayQuiz(saturday, USER_ID);
     }
 
     private void givenUncompletedTodayQuiz() {
