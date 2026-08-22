@@ -113,10 +113,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
                     "The quiz variant inventory is already full for this date.");
         }
 
-        if (dailyJobCount() >= Math.max(1, properties.getMaxJobsPerDay())) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "QUIZ_GENERATION_DAILY_LIMIT_REACHED",
-                    "The daily quiz generation budget has been exhausted.");
-        }
     }
 
     private long createGenerationLog(
@@ -410,9 +406,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
         if ("QUIZ_DATE_INVENTORY_FULL".equals(code)) {
             return false;
         }
-        if ("QUIZ_GENERATION_DAILY_LIMIT_REACHED".equals(code)) {
-            return false;
-        }
         return !"QUIZ_GENERATION_API_DAILY_LIMIT_REACHED".equals(code);
     }
 
@@ -502,13 +495,6 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             }
         }
         return true;
-    }
-
-    private long dailyJobCount() {
-        LocalDate today = LocalDate.now(clock);
-        Instant from = today.atStartOfDay(clock.getZone()).toInstant();
-        Instant until = today.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
-        return mapper.countLogsCreatedBetween(from, until);
     }
 
     private boolean isTransient(ApiException exception) {

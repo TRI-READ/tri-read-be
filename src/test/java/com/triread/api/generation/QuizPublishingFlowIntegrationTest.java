@@ -35,7 +35,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         "app.quiz-generation.ai-validation-enabled=false",
         "app.quiz-generation.source-grounding-enabled=false",
         "app.quiz-generation.variants-per-date=1",
-        "app.quiz-generation.max-jobs-per-day=10",
         "app.quiz-generation.max-api-calls-per-day=10",
         "app.quiz-generation.retry-delay-ms=0",
         "app.notifications.discord.enabled=false"

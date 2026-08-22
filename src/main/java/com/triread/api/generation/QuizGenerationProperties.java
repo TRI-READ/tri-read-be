@@ -13,7 +13,6 @@ public class QuizGenerationProperties {
     private int variantsPerDate = 3;
     private int inventoryDays = 3;
     private int maxJobsPerRun = 3;
-    private int maxJobsPerDay = 3;
     private int maxApiCallsPerDay = 6;
     private int rateLimitCooldownMinutes = 360;
     private boolean aiValidationEnabled;
@@ -37,8 +36,6 @@ public class QuizGenerationProperties {
     public void setInventoryDays(int inventoryDays) { this.inventoryDays = inventoryDays; }
     public int getMaxJobsPerRun() { return maxJobsPerRun; }
     public void setMaxJobsPerRun(int maxJobsPerRun) { this.maxJobsPerRun = maxJobsPerRun; }
-    public int getMaxJobsPerDay() { return maxJobsPerDay; }
-    public void setMaxJobsPerDay(int maxJobsPerDay) { this.maxJobsPerDay = maxJobsPerDay; }
     public int getMaxApiCallsPerDay() { return maxApiCallsPerDay; }
     public void setMaxApiCallsPerDay(int maxApiCallsPerDay) { this.maxApiCallsPerDay = maxApiCallsPerDay; }
     public int getRateLimitCooldownMinutes() { return rateLimitCooldownMinutes; }
