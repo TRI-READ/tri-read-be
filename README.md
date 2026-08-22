@@ -46,6 +46,7 @@ Caddy가 한 도메인에서 정적 프론트엔드와 `/api/*` 요청을 나눠
 - [브랜치 및 배포 정책](docs/branching-and-release.md)
 - [API 명세](docs/api.md)
 - [운영 장애 대응과 복원 절차](docs/operations.md)
+- [트러블슈팅 기록](docs/TROUBLESHOOTING.md)
 - [버전별 변경 이력](CHANGELOG.md)
 
 ## 주요 기능
