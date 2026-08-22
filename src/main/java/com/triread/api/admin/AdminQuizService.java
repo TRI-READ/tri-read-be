@@ -179,13 +179,6 @@ public class AdminQuizService {
     }
 
     @Transactional
-    public boolean recycleUnusedPublishedQuiz(LocalDate targetDate) {
-        String variantCode = nextVariantCode(targetDate);
-        return adminQuizMapper.rescheduleOldestUnassignedPublishedQuiz(
-                LocalDate.now(clock), targetDate, variantCode) == 1;
-    }
-
-    @Transactional
     public QuizDetail updateDraft(long quizSetId, CreateQuiz command) {
         validateQuiz(command);
         AdminQuizData.QuizRow quiz = requireEditable(quizSetId);

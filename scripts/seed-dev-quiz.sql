@@ -158,6 +158,7 @@ BEGIN
 
     INSERT INTO quiz_sets (
         challenge_date,
+        available_on,
         difficulty,
         status,
         ai_provider,
@@ -166,6 +167,7 @@ BEGIN
         published_at
     )
     VALUES (
+        CURRENT_DATE,
         CURRENT_DATE,
         'HIGH_SCHOOL_GRADE_3',
         'PUBLISHED',

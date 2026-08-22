@@ -22,7 +22,8 @@
 | 로그인 | POST | `/api/auth/login` |
 | 로그아웃 | POST | `/api/auth/logout` |
 | 내 정보 | GET | `/api/auth/me` |
-| 오늘 퀴즈 | GET | `/api/quizzes/today` |
+| 오늘 퀴즈 | POST | `/api/quizzes/today` |
+| 남은 보너스 지문 | GET | `/api/quizzes/bonus` |
 | 답안 제출 | POST | `/api/quizzes/{quizSetId}/attempts` |
 | 오답 목록 | GET | `/api/reviews?status=OPEN` |
 | 오답 상세 | GET | `/api/reviews/{reviewId}` |
@@ -30,7 +31,7 @@
 | 학습 기록 | GET | `/api/orbit?period=WEEK&anchor=YYYY-MM-DD` |
 | 연속 학습 | GET | `/api/orbit/streak` |
 
-답안 제출은 한 지문의 세 문제에 대한 답을 모두 포함해야 합니다. 하루 첫 제출은 `PRIMARY`, 추가 지문 제출은 `BONUS`로 기록됩니다.
+답안 제출은 한 지문의 세 문제에 대한 답을 모두 포함해야 합니다. 학습일에 배정된 세트의 첫 제출은 `PRIMARY`, 같은 세트의 추가 지문은 `BONUS`로 기록됩니다. 과거 세트는 `PRIMARY`가 완료된 경우에만 남은 지문을 `BONUS`로 제출할 수 있습니다.
 
 ## 관리자 API
 

@@ -39,9 +39,6 @@ public interface AdminQuizMapper {
     int updateDraftDate(@Param("quizSetId") long quizSetId,
                         @Param("challengeDate") LocalDate challengeDate,
                         @Param("variantCode") String variantCode);
-    int rescheduleOldestUnassignedPublishedQuiz(@Param("currentDate") LocalDate currentDate,
-                                                @Param("targetDate") LocalDate targetDate,
-                                                @Param("variantCode") String variantCode);
     int invalidateGeneration(@Param("quizSetId") long quizSetId, @Param("updatedAt") Instant updatedAt);
     int deleteKeys(long quizSetId);
     int deleteOptions(long quizSetId);

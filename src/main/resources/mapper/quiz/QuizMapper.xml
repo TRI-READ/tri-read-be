@@ -6,14 +6,12 @@
 
     <select id="findTodayQuiz" resultType="com.triread.api.quiz.QuizData$QuizSetRow">
         SELECT qs.id AS quiz_set_id,
-               qs.challenge_date,
+               assignment.study_date AS challenge_date,
                qs.variant_code,
                qs.difficulty
         FROM user_quiz_assignments assignment
-        JOIN quiz_sets qs
-          ON qs.id = assignment.quiz_set_id
-         AND qs.challenge_date = assignment.challenge_date
-        WHERE assignment.challenge_date = #{challengeDate}
+        JOIN quiz_sets qs ON qs.id = assignment.quiz_set_id
+        WHERE assignment.study_date = #{challengeDate}
           AND assignment.user_id = #{userId}
           AND qs.status = 'PUBLISHED'
     </select>
@@ -35,23 +33,95 @@
                  qa.id
     </select>
 
-    <select id="findPublishedQuizSetIds" resultType="long">
+    <select id="findAvailableQuizSetIds" resultType="long">
         SELECT qs.id
         FROM quiz_sets qs
-        WHERE qs.challenge_date = #{challengeDate}
-          AND qs.status = 'PUBLISHED'
+        WHERE qs.status = 'PUBLISHED'
+          AND qs.retired_at IS NULL
+          AND qs.available_on &lt;= #{studyDate}
           AND NOT EXISTS (
               SELECT 1 FROM user_quiz_assignments previous
               WHERE previous.user_id = #{userId}
                 AND previous.quiz_set_id = qs.id
           )
-        ORDER BY qs.variant_code, qs.id
+        ORDER BY qs.available_on, qs.published_at NULLS LAST, qs.id
     </select>
 
+    <select id="findAssignedQuiz" resultType="com.triread.api.quiz.QuizData$QuizSetRow">
+        SELECT qs.id AS quiz_set_id,
+               assignment.study_date AS challenge_date,
+               qs.variant_code,
+               qs.difficulty
+        FROM user_quiz_assignments assignment
+        JOIN quiz_sets qs ON qs.id = assignment.quiz_set_id
+        WHERE assignment.user_id = #{userId}
+          AND assignment.quiz_set_id = #{quizSetId}
+          AND qs.status = 'PUBLISHED'
+    </select>
+
+    <select id="findBonusQuizSets" resultType="com.triread.api.quiz.QuizData$QuizSetRow">
+        SELECT qs.id AS quiz_set_id,
+               assignment.study_date AS challenge_date,
+               qs.variant_code,
+               qs.difficulty
+        FROM user_quiz_assignments assignment
+        JOIN quiz_sets qs ON qs.id = assignment.quiz_set_id
+        WHERE assignment.user_id = #{userId}
+          AND assignment.study_date &lt; #{beforeDate}
+          AND qs.status = 'PUBLISHED'
+          AND EXISTS (
+              SELECT 1
+              FROM quiz_attempts primary_attempt
+              WHERE primary_attempt.user_id = assignment.user_id
+                AND primary_attempt.quiz_set_id = assignment.quiz_set_id
+                AND primary_attempt.attempt_type = 'PRIMARY'
+          )
+          AND (
+              SELECT COUNT(*)
+              FROM quiz_attempts completed
+              WHERE completed.user_id = assignment.user_id
+                AND completed.quiz_set_id = assignment.quiz_set_id
+          ) &lt; 3
+        ORDER BY assignment.study_date DESC, assignment.assigned_at DESC
+    </select>
+
+    <update id="carryForwardOldestUnstartedAssignment">
+        WITH carry AS (
+            SELECT assignment.user_id, assignment.quiz_set_id
+            FROM user_quiz_assignments assignment
+            WHERE assignment.user_id = #{userId}
+              AND assignment.study_date &lt; #{studyDate}
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM quiz_attempts attempt
+                  WHERE attempt.user_id = assignment.user_id
+                    AND attempt.quiz_set_id = assignment.quiz_set_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM user_quiz_assignments today_assignment
+                  WHERE today_assignment.user_id = assignment.user_id
+                    AND today_assignment.study_date = #{studyDate}
+              )
+            ORDER BY assignment.study_date, assignment.assigned_at
+            FOR UPDATE OF assignment SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE user_quiz_assignments assignment
+        SET challenge_date = #{studyDate},
+            study_date = #{studyDate},
+            assigned_at = CURRENT_TIMESTAMP
+        FROM carry
+        WHERE assignment.user_id = carry.user_id
+          AND assignment.quiz_set_id = carry.quiz_set_id
+    </update>
+
     <insert id="insertAssignment">
-        INSERT INTO user_quiz_assignments (user_id, challenge_date, quiz_set_id)
-        VALUES (#{userId}, #{challengeDate}, #{quizSetId})
-        ON CONFLICT (user_id, challenge_date) DO NOTHING
+        INSERT INTO user_quiz_assignments (
+            user_id, challenge_date, study_date, quiz_set_id
+        )
+        VALUES (#{userId}, #{studyDate}, #{studyDate}, #{quizSetId})
+        ON CONFLICT (user_id, study_date) DO NOTHING
     </insert>
 
     <select id="findPassages" resultType="com.triread.api.quiz.QuizData$PassageRow">

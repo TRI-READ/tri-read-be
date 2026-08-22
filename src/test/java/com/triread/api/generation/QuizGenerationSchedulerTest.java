@@ -40,7 +40,7 @@ class QuizGenerationSchedulerTest {
     void setUp() {
         properties = new QuizGenerationProperties();
         properties.setEnabled(true);
-        properties.setVariantsPerDate(3);
+        properties.setSetsPerDate(3);
         properties.setInventoryDays(3);
         properties.setMaxJobsPerRun(3);
         scheduler = new QuizGenerationScheduler(
@@ -136,15 +136,15 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void reusesUnassignedPublishedSetsBeforeGenerating() {
-        properties.setVariantsPerDate(1);
+    void generatesOneSetForEachMissingDate() {
+        properties.setSetsPerDate(1);
         stubActiveCounts(Map.of());
-        when(adminQuizService.recycleUnusedPublishedQuiz(any())).thenReturn(true);
 
         scheduler.replenishInventory();
 
-        verify(adminQuizService).recycleUnusedPublishedQuiz(LocalDate.of(2026, 7, 13));
-        verify(generationService, never()).generate(any());
+        verify(generationService).generate(LocalDate.of(2026, 7, 13));
+        verify(generationService).generate(LocalDate.of(2026, 7, 14));
+        verify(generationService).generate(LocalDate.of(2026, 7, 15));
     }
 
     @Test

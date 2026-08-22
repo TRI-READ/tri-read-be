@@ -10,7 +10,7 @@ public class QuizGenerationProperties {
     private boolean autoPublish;
     private int maxAttempts = 2;
     private int passScore = 90;
-    private int variantsPerDate = 3;
+    private int setsPerDate = 1;
     private int inventoryDays = 3;
     private int maxJobsPerRun = 3;
     private int maxApiCallsPerDay = 6;
@@ -30,8 +30,8 @@ public class QuizGenerationProperties {
     public void setMaxAttempts(int maxAttempts) { this.maxAttempts = maxAttempts; }
     public int getPassScore() { return passScore; }
     public void setPassScore(int passScore) { this.passScore = passScore; }
-    public int getVariantsPerDate() { return variantsPerDate; }
-    public void setVariantsPerDate(int variantsPerDate) { this.variantsPerDate = variantsPerDate; }
+    public int getSetsPerDate() { return setsPerDate; }
+    public void setSetsPerDate(int setsPerDate) { this.setsPerDate = setsPerDate; }
     public int getInventoryDays() { return inventoryDays; }
     public void setInventoryDays(int inventoryDays) { this.inventoryDays = inventoryDays; }
     public int getMaxJobsPerRun() { return maxJobsPerRun; }

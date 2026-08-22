@@ -166,7 +166,7 @@ class QuizGenerationServiceImplTest {
     @Test
     void rejectsGenerationWhenDateAlreadyHasConfiguredVariantCount() {
         LocalDate date = LocalDate.of(2026, 7, 20);
-        properties.setVariantsPerDate(3);
+        properties.setSetsPerDate(3);
         when(adminQuizService.countActiveQuizSets(date)).thenReturn(3);
 
         assertThatThrownBy(() -> service.generate(date))

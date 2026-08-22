@@ -34,7 +34,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         "app.quiz-generation.auto-publish=false",
         "app.quiz-generation.ai-validation-enabled=false",
         "app.quiz-generation.source-grounding-enabled=false",
-        "app.quiz-generation.variants-per-date=1",
+        "app.quiz-generation.sets-per-date=1",
         "app.quiz-generation.max-api-calls-per-day=10",
         "app.quiz-generation.retry-delay-ms=0",
         "app.notifications.discord.enabled=false"
@@ -44,6 +44,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class QuizPublishingFlowIntegrationTest {
 
     private static final LocalDate TODAY = LocalDate.of(2030, 1, 8);
+    private static final LocalDate CONTENT_DATE = TODAY.minusDays(1);
     private static final Instant NOW = Instant.parse("2030-01-08T03:00:00Z");
 
     @Container
@@ -82,7 +83,7 @@ class QuizPublishingFlowIntegrationTest {
     @Transactional
     void generatesPublishesAndAssignsQuizUsingPostgres() {
         QuizGenerationService.GenerationResult generated =
-                quizGenerationService.generate(TODAY);
+                quizGenerationService.generate(CONTENT_DATE);
 
         long quizSetId = generated.quiz().quiz().quizSetId();
         assertThat(generated.status()).isEqualTo("READY");
@@ -103,7 +104,18 @@ class QuizPublishingFlowIntegrationTest {
         assertThat(countRows("user_quiz_assignments")).isEqualTo(1);
         assertThat(countRows("ai_api_calls")).isEqualTo(1);
 
-        assertThatThrownBy(() -> quizGenerationService.generate(TODAY))
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT challenge_date FROM quiz_sets WHERE id = ?",
+                LocalDate.class,
+                quizSetId
+        )).isEqualTo(CONTENT_DATE);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT study_date FROM user_quiz_assignments WHERE user_id = ?",
+                LocalDate.class,
+                reader.userId()
+        )).isEqualTo(TODAY);
+
+        assertThatThrownBy(() -> quizGenerationService.generate(CONTENT_DATE))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.getCode())
                                 .isEqualTo("QUIZ_DATE_INVENTORY_FULL"));

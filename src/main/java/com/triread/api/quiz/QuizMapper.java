@@ -18,13 +18,28 @@ public interface QuizMapper {
             @Param("userId") long userId
     );
 
-    List<Long> findPublishedQuizSetIds(
-            @Param("challengeDate") LocalDate challengeDate,
+    List<Long> findAvailableQuizSetIds(
+            @Param("studyDate") LocalDate studyDate,
             @Param("userId") long userId
     );
 
+    QuizData.QuizSetRow findAssignedQuiz(
+            @Param("quizSetId") long quizSetId,
+            @Param("userId") long userId
+    );
+
+    List<QuizData.QuizSetRow> findBonusQuizSets(
+            @Param("userId") long userId,
+            @Param("beforeDate") LocalDate beforeDate
+    );
+
+    int carryForwardOldestUnstartedAssignment(
+            @Param("userId") long userId,
+            @Param("studyDate") LocalDate studyDate
+    );
+
     int insertAssignment(@Param("userId") long userId,
-                         @Param("challengeDate") LocalDate challengeDate,
+                         @Param("studyDate") LocalDate studyDate,
                          @Param("quizSetId") long quizSetId);
 
     List<QuizData.PassageRow> findPassages(long quizSetId);

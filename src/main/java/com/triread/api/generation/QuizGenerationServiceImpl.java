@@ -107,8 +107,8 @@ public class QuizGenerationServiceImpl implements QuizGenerationService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TARGET_DATE_REQUIRED", "Target date is required.");
         }
 
-        int variantLimit = Math.max(1, properties.getVariantsPerDate());
-        if (adminQuizService.countActiveQuizSets(targetDate) >= variantLimit) {
+        int setLimit = Math.max(1, properties.getSetsPerDate());
+        if (adminQuizService.countActiveQuizSets(targetDate) >= setLimit) {
             throw new ApiException(HttpStatus.CONFLICT, "QUIZ_DATE_INVENTORY_FULL",
                     "The quiz variant inventory is already full for this date.");
         }
