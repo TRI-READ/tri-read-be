@@ -52,7 +52,7 @@ public class OperationsService {
         List<OperationsData.InventoryRow> inventory = mapper.inventory(
                 today,
                 today.plusDays(6),
-                Math.max(1, properties.getVariantsPerDate())
+                Math.max(1, properties.getSetsPerDate())
         );
         List<OperationsData.FailureRow> recentFailures =
                 mapper.recentFailures(RECENT_ITEM_LIMIT);

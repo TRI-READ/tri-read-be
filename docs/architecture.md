@@ -42,18 +42,20 @@ erDiagram
     STUDY_GROUPS ||--o{ GROUP_MEMBERS : includes
 ```
 
-날짜별 퀴즈는 사용자에게 한 번 배정되면 `user_quiz_assignments`에 고정됩니다. 응시는 지문 단위이며, 하루 첫 지문만 `PRIMARY`, 나머지는 `BONUS`로 저장합니다. 이 제약을 PostgreSQL 인덱스와 서비스 검증 양쪽에서 지킵니다.
+발행된 퀴즈는 `quiz_sets.available_on`부터 콘텐츠 풀에 들어갑니다. `quiz_sets.challenge_date`는 생성·관리 이력으로 남고, 실제 학습일은 `user_quiz_assignments.study_date`가 소유합니다. 사용자는 아직 배정받지 않은 오래된 세트부터 받으며, 미시작 세트는 다음 접속일로 이월됩니다. 응시는 지문 단위이며 첫 지문만 `PRIMARY`, 나머지는 당일 또는 보너스 서재에서 `BONUS`로 저장합니다. 이 제약을 PostgreSQL 인덱스와 서비스 검증 양쪽에서 지킵니다.
 
 ## 문제 생성 흐름
 
 ```mermaid
 flowchart LR
-    Inventory["향후 재고 확인"] --> Reuse{"발행 재고가 있는가"}
-    Reuse -->|예| Assign["기존 세트 재사용"]
-    Reuse -->|아니오| Brief["날짜당 출처 브리핑 1회"]
+    Inventory["향후 콘텐츠 생산 확인"] --> Enough{"해당 날짜 세트가 있는가"}
+    Enough -->|예| Wait["콘텐츠 풀에 유지"]
+    Enough -->|아니오| Brief["날짜당 출처 브리핑 1회"]
     Brief --> Generate["3개 지문 생성"]
     Generate --> Local["형식 / 중복 / 다양성 검사"]
     Local -->|통과| Review["관리자 검토 또는 자동 발행"]
+    Review --> Pool["발행 콘텐츠 풀"]
+    Pool --> Assign["사용자별 오래된 미열람 세트 배정"]
     Local -->|일부 실패| Repair["실패 지문만 재생성"]
     Repair --> Local
 ```

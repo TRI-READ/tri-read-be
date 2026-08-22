@@ -126,9 +126,10 @@ class UserLearningFlowIntegrationTest {
     private QuizFixture createPublishedQuiz() {
         long quizSetId = jdbcTemplate.queryForObject(
                 "INSERT INTO quiz_sets "
-                        + "(challenge_date, status, variant_code, published_at) "
-                        + "VALUES (?, 'PUBLISHED', 'A', ?) RETURNING id",
+                        + "(challenge_date, available_on, status, variant_code, published_at) "
+                        + "VALUES (?, ?, 'PUBLISHED', 'A', ?) RETURNING id",
                 Long.class,
+                TODAY,
                 TODAY,
                 Timestamp.from(NOW)
         );

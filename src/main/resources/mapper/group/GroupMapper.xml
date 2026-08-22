@@ -131,18 +131,20 @@
                        FROM attempt_answers aa
                        WHERE aa.attempt_id = qa.id
                    ) AS total_questions,
-                   qs.challenge_date,
+                   assignment.study_date AS challenge_date,
                    ROW_NUMBER() OVER (
                        PARTITION BY qa.user_id
                        ORDER BY CASE
-                           WHEN EXTRACT(ISODOW FROM qs.challenge_date) &lt;= 5 THEN 0
+                           WHEN EXTRACT(ISODOW FROM assignment.study_date) &lt;= 5 THEN 0
                            ELSE 1
                        END,
-                       qs.challenge_date
+                       assignment.study_date
                    ) AS credit_order
             FROM quiz_attempts qa
-            JOIN quiz_sets qs ON qs.id = qa.quiz_set_id
-            WHERE qs.challenge_date BETWEEN #{startDate} AND #{endDate}
+            JOIN user_quiz_assignments assignment
+              ON assignment.user_id = qa.user_id
+             AND assignment.quiz_set_id = qa.quiz_set_id
+            WHERE assignment.study_date BETWEEN #{startDate} AND #{endDate}
               AND qa.attempt_type = 'PRIMARY'
         ), credited_attempts AS (
             SELECT *

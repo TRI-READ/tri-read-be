@@ -36,8 +36,21 @@ public class QuizService {
 
     @Transactional
     public TodayQuizResponse getTodayQuiz(long userId) {
-        LocalDate challengeDate = LocalDate.now(clock);
-        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
+        LocalDate studyDate = LocalDate.now(clock);
+        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, studyDate);
+        return toQuizResponse(userId, quizSet);
+    }
+
+    @Transactional(readOnly = true)
+    public BonusShelfResponse getBonusShelf(long userId) {
+        List<TodayQuizResponse> quizzes = quizMapper
+                .findBonusQuizSets(userId, LocalDate.now(clock)).stream()
+                .map(quizSet -> toQuizResponse(userId, quizSet))
+                .toList();
+        return new BonusShelfResponse(quizzes);
+    }
+
+    private TodayQuizResponse toQuizResponse(long userId, QuizData.QuizSetRow quizSet) {
         QuizContent content = loadAndValidateContent(quizSet.quizSetId());
         List<AttemptSummary> attempts = findAttemptSummaries(userId, quizSet.quizSetId());
         AttemptSummary primaryAttempt = findPrimaryAttempt(attempts);
@@ -61,13 +74,18 @@ public class QuizService {
             long quizSetId,
             List<SubmittedAnswer> submittedAnswers
     ) {
-        LocalDate challengeDate = LocalDate.now(clock);
-        QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
-        validateQuizSetId(quizSet, quizSetId);
+        LocalDate today = LocalDate.now(clock);
+        QuizData.QuizSetRow quizSet = quizMapper.findAssignedQuiz(quizSetId, userId);
+        if (quizSet == null || quizSet.challengeDate().isAfter(today)) {
+            throw assignedQuizNotFoundException();
+        }
 
         QuizContent content = loadAndValidateContent(quizSetId);
         ValidatedSubmission submission = validateSubmittedAnswers(submittedAnswers, content);
         List<QuizData.AttemptRow> existingAttempts = quizMapper.findAttempts(quizSetId, userId);
+        if (quizSet.challengeDate().isBefore(today) && existingAttempts.isEmpty()) {
+            throw bonusLockedException();
+        }
         String attemptType = determineAttemptType(existingAttempts, submission.passageId());
 
         List<QuizData.AnswerKeyRow> answerKeys = quizMapper.findAnswerKeys(quizSetId);
@@ -97,17 +115,6 @@ public class QuizService {
                 completedAt,
                 questionResults,
                 quizMapper.findSourceReferences(submission.passageId())
-        );
-    }
-
-    private void validateQuizSetId(QuizData.QuizSetRow quizSet, long quizSetId) {
-        if (quizSet.quizSetId() == quizSetId) {
-            return;
-        }
-        throw new ApiException(
-                HttpStatus.NOT_FOUND,
-                "TODAY_QUIZ_NOT_FOUND",
-                "Today's published quiz was not found."
         );
     }
 
@@ -213,19 +220,24 @@ public class QuizService {
         }
     }
 
-    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate challengeDate) {
-        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
+    private QuizData.QuizSetRow findTodayQuiz(long userId, LocalDate studyDate) {
+        QuizData.QuizSetRow quizSet = quizMapper.findTodayQuiz(studyDate, userId);
         if (quizSet != null) {
             return quizSet;
         }
 
-        List<Long> candidates = quizMapper.findPublishedQuizSetIds(challengeDate, userId);
+        if (quizMapper.carryForwardOldestUnstartedAssignment(userId, studyDate) == 1) {
+            quizSet = quizMapper.findTodayQuiz(studyDate, userId);
+            if (quizSet != null) {
+                return quizSet;
+            }
+        }
+
+        List<Long> candidates = quizMapper.findAvailableQuizSetIds(studyDate, userId);
         if (!candidates.isEmpty()) {
-            int assignmentIndex = Math.floorMod(
-                    31 * Long.hashCode(userId) + challengeDate.hashCode(), candidates.size());
-            long assignedQuizSetId = candidates.get(assignmentIndex);
-            quizMapper.insertAssignment(userId, challengeDate, assignedQuizSetId);
-            quizSet = quizMapper.findTodayQuiz(challengeDate, userId);
+            long assignedQuizSetId = candidates.getFirst();
+            quizMapper.insertAssignment(userId, studyDate, assignedQuizSetId);
+            quizSet = quizMapper.findTodayQuiz(studyDate, userId);
         }
 
         if (quizSet == null) {
@@ -401,6 +413,22 @@ public class QuizService {
         );
     }
 
+    private ApiException assignedQuizNotFoundException() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND,
+                "ASSIGNED_QUIZ_NOT_FOUND",
+                "The assigned published quiz was not found."
+        );
+    }
+
+    private ApiException bonusLockedException() {
+        return new ApiException(
+                HttpStatus.CONFLICT,
+                "BONUS_QUIZ_LOCKED",
+                "A primary passage must be completed before this quiz can be used as bonus study."
+        );
+    }
+
     private record QuizContent(
             List<PassageResponse> passages,
             Map<Long, Set<Long>> optionIdsByQuestion,
@@ -427,6 +455,9 @@ public class QuizService {
             boolean bonusUnlocked,
             List<PassageResponse> passages
     ) {
+    }
+
+    public record BonusShelfResponse(List<TodayQuizResponse> quizzes) {
     }
 
     public record AttemptSummary(

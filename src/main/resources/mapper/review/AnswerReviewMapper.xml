@@ -9,7 +9,7 @@
         ar.question_id,
         ar.review_status,
         ar.retry_count,
-        qs.challenge_date,
+        assignment.study_date AS challenge_date,
         p.title AS passage_title,
         p.topic AS passage_topic,
         p.content AS passage_content,
@@ -33,6 +33,9 @@
         JOIN questions q ON q.id = ar.question_id
         JOIN passages p ON p.id = q.passage_id
         JOIN quiz_sets qs ON qs.id = p.quiz_set_id
+        JOIN user_quiz_assignments assignment
+          ON assignment.user_id = ar.user_id
+         AND assignment.quiz_set_id = qs.id
         JOIN attempt_answers aa
           ON aa.attempt_id = ar.source_attempt_id
          AND aa.question_id = ar.question_id
@@ -68,7 +71,7 @@
             </when>
         </choose>
         ORDER BY CASE ar.review_status WHEN 'RECOVERED' THEN 1 ELSE 0 END,
-                 qs.challenge_date DESC,
+                 assignment.study_date DESC,
                  ar.id DESC
     </select>
 

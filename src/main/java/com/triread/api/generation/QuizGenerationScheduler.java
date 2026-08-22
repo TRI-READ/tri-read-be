@@ -57,23 +57,17 @@ public class QuizGenerationScheduler {
             return;
         }
         int jobsStarted = 0;
-        int recycled = 0;
         int failed = 0;
         boolean success = false;
         String resultMessage = null;
         int inventoryDays = Math.max(1, properties.getInventoryDays());
         int maxJobsPerRun = Math.max(1, properties.getMaxJobsPerRun());
         List<LocalDate> targetDates = upcomingDates(LocalDate.now(clock), inventoryDays);
-        int variantsPerDate = Math.max(1, properties.getVariantsPerDate());
+        int setsPerDate = Math.max(1, properties.getSetsPerDate());
         try {
             for (LocalDate targetDate : targetDates) {
                 int activeCount = adminQuizService.countActiveQuizSets(targetDate);
-                while (activeCount < variantsPerDate) {
-                    if (adminQuizService.recycleUnusedPublishedQuiz(targetDate)) {
-                        activeCount++;
-                        recycled++;
-                        continue;
-                    }
+                while (activeCount < setsPerDate) {
                     if (jobsStarted >= maxJobsPerRun) {
                         success = failed == 0;
                         return;
@@ -110,7 +104,7 @@ public class QuizGenerationScheduler {
             operationsService.completeEvent(eventId, success,
                     resultMessage != null ? resultMessage
                             : trigger + " inventory replenishment finished: generated="
-                                    + jobsStarted + ", recycled=" + recycled + ", failed=" + failed);
+                                    + jobsStarted + ", failed=" + failed);
         }
     }
 

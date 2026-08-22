@@ -205,20 +205,6 @@ class AdminQuizServiceTest {
         verify(adminQuizMapper).deleteDraft(secondQuizId);
     }
 
-    @Test
-    void recyclesUnusedPublishedQuizIntoNextVariantCode() {
-        LocalDate targetDate = LocalDate.of(2026, 7, 20);
-        when(adminQuizMapper.findActiveVariantCodesByDate(targetDate)).thenReturn(List.of("A"));
-        when(adminQuizMapper.rescheduleOldestUnassignedPublishedQuiz(
-                LocalDate.of(2026, 7, 12), targetDate, "B")).thenReturn(1);
-
-        boolean recycled = service.recycleUnusedPublishedQuiz(targetDate);
-
-        assertThat(recycled).isTrue();
-        verify(adminQuizMapper).rescheduleOldestUnassignedPublishedQuiz(
-                LocalDate.of(2026, 7, 12), targetDate, "B");
-    }
-
     private AdminQuizData.QuizRow quizRow(long quizId, String status) {
         return new AdminQuizData.QuizRow(
                 quizId,

@@ -53,8 +53,8 @@
         ORDER BY variant_code
     </select>
     <insert id="insertQuiz" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        INSERT INTO quiz_sets (challenge_date, variant_code, status)
-        VALUES (#{challengeDate}, #{variantCode}, 'DRAFT')
+        INSERT INTO quiz_sets (challenge_date, available_on, variant_code, status)
+        VALUES (#{challengeDate}, #{challengeDate}, #{variantCode}, 'DRAFT')
     </insert>
     <insert id="insertPassage" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO passages (quiz_set_id, position, title, content, topic)
@@ -73,7 +73,8 @@
         VALUES (#{questionId}, #{correctOptionId}, #{explanation}, #{evidence})
     </insert>
     <update id="publish">
-        UPDATE quiz_sets SET status = 'PUBLISHED', published_at = #{publishedAt}
+        UPDATE quiz_sets
+        SET status = 'PUBLISHED', published_at = #{publishedAt}, retired_at = NULL
         WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
     </update>
     <update id="markReviewed">
@@ -89,27 +90,9 @@
     </update>
     <update id="updateDraftDate">
         UPDATE quiz_sets
-        SET challenge_date = #{challengeDate}, variant_code = #{variantCode}, status = 'DRAFT'
+        SET challenge_date = #{challengeDate}, available_on = #{challengeDate},
+            variant_code = #{variantCode}, status = 'DRAFT'
         WHERE id = #{quizSetId} AND status IN ('DRAFT', 'REVIEWED')
-    </update>
-    <update id="rescheduleOldestUnassignedPublishedQuiz">
-        WITH reusable AS (
-            SELECT qs.id
-            FROM quiz_sets qs
-            WHERE qs.status = 'PUBLISHED'
-              AND qs.challenge_date &lt; #{currentDate}
-              AND NOT EXISTS (
-                  SELECT 1 FROM user_quiz_assignments assignment
-                  WHERE assignment.quiz_set_id = qs.id
-              )
-            ORDER BY qs.challenge_date, qs.id
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-        )
-        UPDATE quiz_sets qs
-        SET challenge_date = #{targetDate}, variant_code = #{variantCode}
-        FROM reusable
-        WHERE qs.id = reusable.id
     </update>
     <update id="invalidateGeneration">
         UPDATE generation_logs

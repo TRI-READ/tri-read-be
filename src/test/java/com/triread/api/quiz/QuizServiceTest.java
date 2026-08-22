@@ -92,7 +92,7 @@ class QuizServiceTest {
     void assignsOnePublishedVariantOnFirstVisit() {
         QuizData.QuizSetRow assigned = quizSet(TODAY, "B");
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(null, assigned);
-        when(quizMapper.findPublishedQuizSetIds(TODAY, USER_ID))
+        when(quizMapper.findAvailableQuizSetIds(TODAY, USER_ID))
                 .thenReturn(List.of(16L, QUIZ_SET_ID, 18L));
         givenCompleteContent();
 
@@ -102,13 +102,47 @@ class QuizServiceTest {
         verify(quizMapper).insertAssignment(
                 org.mockito.ArgumentMatchers.eq(USER_ID),
                 org.mockito.ArgumentMatchers.eq(TODAY),
-                org.mockito.ArgumentMatchers.longThat(id ->
-                        id == 16L || id == QUIZ_SET_ID || id == 18L));
+                org.mockito.ArgumentMatchers.eq(16L));
+    }
+
+    @Test
+    void carriesForwardOldestUnstartedAssignmentBeforeUsingNewPoolContent() {
+        QuizData.QuizSetRow carried = quizSet(TODAY, "A");
+        when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(null, carried);
+        when(quizMapper.carryForwardOldestUnstartedAssignment(USER_ID, TODAY)).thenReturn(1);
+        givenCompleteContent();
+
+        QuizService.TodayQuizResponse result = quizService.getTodayQuiz(USER_ID);
+
+        assertThat(result.quizSetId()).isEqualTo(QUIZ_SET_ID);
+        verify(quizMapper, never()).findAvailableQuizSetIds(TODAY, USER_ID);
+    }
+
+    @Test
+    void bonusShelfReturnsPastAssignmentsWithUnfinishedPassages() {
+        LocalDate previousStudyDate = TODAY.minusDays(1);
+        when(quizMapper.findBonusQuizSets(USER_ID, TODAY)).thenReturn(
+                List.of(quizSet(previousStudyDate, "A"))
+        );
+        when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
+                List.of(new QuizData.AttemptRow(
+                        91L, 2, 3, 101L, "PRIMARY", NOW.minusSeconds(86_400)
+                ))
+        );
+        givenCompleteContent();
+
+        QuizService.BonusShelfResponse result = quizService.getBonusShelf(USER_ID);
+
+        assertThat(result.quizzes()).singleElement().satisfies(quiz -> {
+            assertThat(quiz.challengeDate()).isEqualTo(previousStudyDate);
+            assertThat(quiz.bonusUnlocked()).isTrue();
+            assertThat(quiz.attempts()).hasSize(1);
+        });
     }
 
     @Test
     void submitScoresAnswersAndCreatesReviewsOnlyForWrongAnswers() {
-        givenUncompletedTodayQuiz();
+        givenAssignedTodayQuiz();
         givenCompleteContent();
         when(quizMapper.findAnswerKeys(QUIZ_SET_ID)).thenReturn(answerKeys(questions));
         doAnswer(invocation -> {
@@ -143,7 +177,7 @@ class QuizServiceTest {
 
     @Test
     void submitRejectsOptionFromAnotherQuestion() {
-        givenUncompletedTodayQuiz();
+        givenAssignedTodayQuiz();
         givenCompleteContent();
         List<QuizService.SubmittedAnswer> submittedAnswers = submittedAnswers(3);
         QuizService.SubmittedAnswer first = submittedAnswers.getFirst();
@@ -164,7 +198,7 @@ class QuizServiceTest {
 
     @Test
     void submitRejectsAlreadyCompletedQuiz() {
-        when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(
+        when(quizMapper.findAssignedQuiz(QUIZ_SET_ID, USER_ID)).thenReturn(
                 quizSet(TODAY, "A")
         );
         givenCompleteContent();
@@ -200,7 +234,7 @@ class QuizServiceTest {
 
     @Test
     void submitRejectsAnswersMixedFromDifferentPassages() {
-        givenUncompletedTodayQuiz();
+        givenAssignedTodayQuiz();
         givenCompleteContent();
         List<QuizService.SubmittedAnswer> submittedAnswers = submittedAnswers(3);
         QuizData.QuestionRow otherPassageQuestion = questions.get(3);
@@ -219,7 +253,7 @@ class QuizServiceTest {
 
     @Test
     void submitUnlocksASecondPassageAsBonusAfterPrimaryCompletion() {
-        givenUncompletedTodayQuiz();
+        givenAssignedTodayQuiz();
         givenCompleteContent();
         when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
                 List.of(new QuizData.AttemptRow(
@@ -248,6 +282,43 @@ class QuizServiceTest {
     }
 
     @Test
+    void submitAllowsBonusPassageFromPreviousStudyDate() {
+        when(quizMapper.findAssignedQuiz(QUIZ_SET_ID, USER_ID)).thenReturn(
+                quizSet(TODAY.minusDays(1), "A")
+        );
+        givenCompleteContent();
+        when(quizMapper.findAttempts(QUIZ_SET_ID, USER_ID)).thenReturn(
+                List.of(new QuizData.AttemptRow(
+                        91L, 2, 3, 101L, "PRIMARY", NOW.minusSeconds(86_400)
+                ))
+        );
+        when(quizMapper.findAnswerKeys(QUIZ_SET_ID)).thenReturn(answerKeys(questions));
+        doAnswer(invocation -> {
+            QuizData.QuizAttemptInsert attempt = invocation.getArgument(0);
+            attempt.setId(92L);
+            return 1;
+        }).when(quizMapper).insertAttempt(any(QuizData.QuizAttemptInsert.class));
+
+        QuizService.QuizResultResponse result = quizService.submitAttempt(
+                USER_ID, QUIZ_SET_ID, submittedAnswersForPassage(1, 3));
+
+        assertThat(result.attemptType()).isEqualTo("BONUS");
+    }
+
+    @Test
+    void submitRejectsUnstartedQuizFromPreviousStudyDate() {
+        when(quizMapper.findAssignedQuiz(QUIZ_SET_ID, USER_ID)).thenReturn(
+                quizSet(TODAY.minusDays(1), "A")
+        );
+        givenCompleteContent();
+
+        assertThatThrownBy(() -> quizService.submitAttempt(
+                USER_ID, QUIZ_SET_ID, submittedAnswers(3)))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("BONUS_QUIZ_LOCKED"));
+    }
+
+    @Test
     void saturdayUsesItsOwnQuizForOptionalMakeUp() {
         LocalDate saturday = LocalDate.of(2026, 7, 18);
         Clock weekendClock = Clock.fixed(
@@ -266,6 +337,12 @@ class QuizServiceTest {
 
     private void givenUncompletedTodayQuiz() {
         when(quizMapper.findTodayQuiz(TODAY, USER_ID)).thenReturn(
+                quizSet(TODAY, "A")
+        );
+    }
+
+    private void givenAssignedTodayQuiz() {
+        when(quizMapper.findAssignedQuiz(QUIZ_SET_ID, USER_ID)).thenReturn(
                 quizSet(TODAY, "A")
         );
     }
