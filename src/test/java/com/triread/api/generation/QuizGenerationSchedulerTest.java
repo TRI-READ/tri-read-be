@@ -58,7 +58,7 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void keepsInventoryWhenConfiguredWeekdaysAreFull() {
+    void keepsInventoryWhenConfiguredDatesAreFull() {
         stubActiveCounts(Map.of(
                 LocalDate.of(2026, 7, 13), 3,
                 LocalDate.of(2026, 7, 14), 3,
@@ -148,7 +148,7 @@ class QuizGenerationSchedulerTest {
     }
 
     @Test
-    void startsFromMondayWhenRunOnWeekend() {
+    void includesWeekendDatesWhenRunOnSaturday() {
         Clock saturdayClock = Clock.fixed(
                 Instant.parse("2026-07-18T03:00:00Z"), SEOUL);
         scheduler = new QuizGenerationScheduler(
@@ -158,10 +158,9 @@ class QuizGenerationSchedulerTest {
 
         scheduler.replenishInventory();
 
-        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 20));
-        verify(generationService, never()).generate(LocalDate.of(2026, 7, 21));
-        verify(generationService, never()).generate(LocalDate.of(2026, 7, 18));
+        verify(generationService, times(3)).generate(LocalDate.of(2026, 7, 18));
         verify(generationService, never()).generate(LocalDate.of(2026, 7, 19));
+        verify(generationService, never()).generate(LocalDate.of(2026, 7, 20));
     }
 
     @Test

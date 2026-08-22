@@ -2,7 +2,6 @@ package com.triread.api.quiz;
 
 import com.triread.api.common.ApiException;
 import java.time.Clock;
-import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -37,8 +36,7 @@ public class QuizService {
 
     @Transactional
     public TodayQuizResponse getTodayQuiz(long userId) {
-        LocalDate today = LocalDate.now(clock);
-        LocalDate challengeDate = resolveChallengeDate(today);
+        LocalDate challengeDate = LocalDate.now(clock);
         QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
         QuizContent content = loadAndValidateContent(quizSet.quizSetId());
         List<AttemptSummary> attempts = findAttemptSummaries(userId, quizSet.quizSetId());
@@ -63,8 +61,7 @@ public class QuizService {
             long quizSetId,
             List<SubmittedAnswer> submittedAnswers
     ) {
-        LocalDate today = LocalDate.now(clock);
-        LocalDate challengeDate = resolveChallengeDate(today);
+        LocalDate challengeDate = LocalDate.now(clock);
         QuizData.QuizSetRow quizSet = findTodayQuiz(userId, challengeDate);
         validateQuizSetId(quizSet, quizSetId);
 
@@ -283,16 +280,6 @@ public class QuizService {
                         attempt.completedAt()
                 ))
                 .toList();
-    }
-
-    private LocalDate resolveChallengeDate(LocalDate today) {
-        if (today.getDayOfWeek() == DayOfWeek.SATURDAY) {
-            return today.minusDays(1);
-        }
-        if (today.getDayOfWeek() == DayOfWeek.SUNDAY) {
-            return today.minusDays(2);
-        }
-        return today;
     }
 
     private QuizContent loadAndValidateContent(long quizSetId) {

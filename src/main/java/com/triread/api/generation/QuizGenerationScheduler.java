@@ -4,7 +4,6 @@ import com.triread.api.admin.AdminQuizService;
 import com.triread.api.common.ApiException;
 import com.triread.api.operations.OperationsService;
 import java.time.Clock;
-import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -64,7 +63,7 @@ public class QuizGenerationScheduler {
         String resultMessage = null;
         int inventoryDays = Math.max(1, properties.getInventoryDays());
         int maxJobsPerRun = Math.max(1, properties.getMaxJobsPerRun());
-        List<LocalDate> targetDates = upcomingWeekdays(LocalDate.now(clock), inventoryDays);
+        List<LocalDate> targetDates = upcomingDates(LocalDate.now(clock), inventoryDays);
         int variantsPerDate = Math.max(1, properties.getVariantsPerDate());
         try {
             for (LocalDate targetDate : targetDates) {
@@ -133,15 +132,9 @@ public class QuizGenerationScheduler {
                 && "GEMINI_RATE_LIMITED".equals(apiException.getCode());
     }
 
-    private List<LocalDate> upcomingWeekdays(LocalDate today, int inventoryDays) {
+    private List<LocalDate> upcomingDates(LocalDate today, int inventoryDays) {
         return Stream.iterate(today, date -> date.plusDays(1))
-                .filter(this::isWeekday)
                 .limit(inventoryDays)
                 .toList();
-    }
-
-    private boolean isWeekday(LocalDate date) {
-        return date.getDayOfWeek() != DayOfWeek.SATURDAY
-                && date.getDayOfWeek() != DayOfWeek.SUNDAY;
     }
 }
