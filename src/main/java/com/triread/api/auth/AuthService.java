@@ -97,6 +97,23 @@ public class AuthService {
         }
     }
 
+    @Transactional
+    public AuthenticatedUser changeDisplayName(long userId, String displayName) {
+        AuthUser user = authMapper.findById(userId);
+        if (user == null || !user.isEnabled()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "The user was not found.");
+        }
+
+        String normalizedDisplayName = displayName.trim();
+        if (!normalizedDisplayName.equals(user.getDisplayName())
+                && authMapper.updateDisplayName(userId, normalizedDisplayName) != 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "DISPLAY_NAME_CHANGE_FAILED",
+                    "The display name could not be changed.");
+        }
+        user.setDisplayName(normalizedDisplayName);
+        return toAuthenticatedUser(user);
+    }
+
     private String normalizeLoginName(String loginName) {
         return loginName.trim().toLowerCase(Locale.ROOT);
     }

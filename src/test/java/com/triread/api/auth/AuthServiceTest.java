@@ -120,6 +120,18 @@ class AuthServiceTest {
                 });
     }
 
+    @Test
+    void changeDisplayNameTrimsAndReturnsUpdatedUser() {
+        AuthUser user = enabledUser();
+        when(authMapper.findById(11L)).thenReturn(user);
+        when(authMapper.updateDisplayName(11L, "서유원")).thenReturn(1);
+
+        AuthService.AuthenticatedUser result = authService.changeDisplayName(11L, "  서유원  ");
+
+        assertThat(result.displayName()).isEqualTo("서유원");
+        verify(authMapper).updateDisplayName(11L, "서유원");
+    }
+
     private AuthUser enabledUser() {
         AuthUser user = new AuthUser();
         user.setId(11L);
