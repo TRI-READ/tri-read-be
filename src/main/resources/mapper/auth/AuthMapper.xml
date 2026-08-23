@@ -103,6 +103,13 @@
           AND enabled = TRUE
     </update>
 
+    <update id="updateDisplayName">
+        UPDATE app_users
+        SET display_name = #{displayName}
+        WHERE id = #{userId}
+          AND enabled = TRUE
+    </update>
+
     <update id="updateEnabled">
         UPDATE app_users
         SET enabled = #{enabled}

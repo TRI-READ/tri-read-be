@@ -104,4 +104,32 @@ class AuthControllerTest {
         verify(authService).changePin(3L, "1234", "5678");
         verify(sessionInvalidationService).invalidateUser(3L);
     }
+
+    @Test
+    void changeDisplayNameReplacesCurrentSessionWithUpdatedPrincipal() {
+        AuthPrincipal principal = new AuthPrincipal(3L, "reader", "Reader", "USER");
+        AuthService.AuthenticatedUser updated =
+                new AuthService.AuthenticatedUser(3L, "reader", "서유원", "USER");
+        when(authService.changeDisplayName(3L, "서유원")).thenReturn(updated);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpSession previousSession = (MockHttpSession) request.getSession(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        AuthController.AuthResponse result = authController.changeDisplayName(
+                principal,
+                new AuthController.ChangeDisplayNameRequest("서유원"),
+                request,
+                response
+        );
+
+        assertThat(previousSession.isInvalid()).isTrue();
+        assertThat(result.displayName()).isEqualTo("서유원");
+        SecurityContext savedContext = (SecurityContext) request.getSession(false).getAttribute(
+                HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY
+        );
+        assertThat(savedContext.getAuthentication().getPrincipal())
+                .isEqualTo(new AuthPrincipal(3L, "reader", "서유원", "USER"));
+        verify(authService).changeDisplayName(3L, "서유원");
+        verify(sessionInvalidationService).invalidateUser(3L);
+    }
 }

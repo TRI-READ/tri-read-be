@@ -97,6 +97,22 @@ public class AuthController {
         endAllSessions(principal.userId(), request);
     }
 
+    @PatchMapping("/display-name")
+    public AuthResponse changeDisplayName(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @Valid @RequestBody ChangeDisplayNameRequest changeDisplayNameRequest,
+            HttpServletRequest request,
+            HttpServletResponse response
+    ) {
+        AuthService.AuthenticatedUser user = authService.changeDisplayName(
+                principal.userId(),
+                changeDisplayNameRequest.displayName()
+        );
+        sessionInvalidationService.invalidateUser(principal.userId());
+        startSession(user, request, response);
+        return AuthResponse.from(user);
+    }
+
     private AuthService.AuthenticatedUser authenticate(
             LoginRequest loginRequest,
             String clientAddress
@@ -200,6 +216,13 @@ public class AuthController {
             @NotBlank
             @Pattern(regexp = "\\d{4,12}", message = "PIN must contain 4 to 12 digits.")
             String newPin
+    ) {
+    }
+
+    public record ChangeDisplayNameRequest(
+            @NotBlank
+            @Size(max = 30)
+            String displayName
     ) {
     }
 

@@ -34,6 +34,11 @@ public interface AuthMapper {
 
     int updatePinHash(@Param("userId") long userId, @Param("pinHash") String pinHash);
 
+    int updateDisplayName(
+            @Param("userId") long userId,
+            @Param("displayName") String displayName
+    );
+
     int updateEnabled(@Param("userId") long userId, @Param("enabled") boolean enabled);
 
     int countEnabledAdmins();
