@@ -83,6 +83,14 @@ jobs:
           ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" 'bash -s -- DB_BACKUP SUCCESS "Encrypted backup and isolated restore verification succeeded"' \
             < deploy/report-operation-event.sh
 
+      - name: Notify Discord on backup success
+        if: ${{ success() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: bash deploy/notify-discord.sh SUCCESS "운영 DB 백업 성공" "암호화 백업과 격리 복원 검증이 정상적으로 완료되었습니다."
+
       - name: Record backup failure
         if: ${{ failure() }}
         continue-on-error: true

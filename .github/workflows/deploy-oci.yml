@@ -84,6 +84,14 @@ jobs:
           ssh -i ~/.ssh/oci "$OCI_USER@$OCI_HOST" \
             "bash ~/tri-read/report-operation-event.sh APP_DEPLOY SUCCESS '$DEPLOY_SHA deployed and smoke-tested'"
 
+      - name: Notify Discord on deployment success
+        if: ${{ success() }}
+        continue-on-error: true
+        shell: bash
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: bash deploy/notify-discord.sh SUCCESS "백엔드 배포 성공" "OCI 배포와 운영 스모크 테스트가 정상적으로 완료되었습니다."
+
       - name: Notify Discord on deployment failure
         if: ${{ failure() }}
         continue-on-error: true
