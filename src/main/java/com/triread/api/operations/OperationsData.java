@@ -26,6 +26,22 @@ public final class OperationsData {
     public record InventoryRow(LocalDate challengeDate, long publishedCount, int requiredCount) {
         public boolean shortage() { return publishedCount < requiredCount; }
     }
+    public record PoolInventory(long draftCount, long reviewedCount,
+                                long availablePublishedCount, long scheduledPublishedCount,
+                                long retiredPublishedCount, long overduePendingCount,
+                                Instant oldestOverduePendingAt) {}
+    public record UserInventory(long userId, String loginName, String displayName,
+                                long unassignedSetCount, long unstartedSetCount,
+                                long remainingSetCount) {}
+    public record UserInventoryStats(long activeUserCount, Long minimumRemainingSets,
+                                     long lowStockUserCount) {}
+    public record InventoryAlert(String code, String severity, String message) {}
+    public record ContentInventory(LocalDate asOfDate, int activeWindowDays,
+                                   int warningThreshold, int criticalThreshold,
+                                   int reviewWaitHours, String status,
+                                   UserInventoryStats users, PoolInventory pool,
+                                   List<UserInventory> lowestStockUsers,
+                                   List<InventoryAlert> alerts) {}
     public record FailureRow(long generationLogId, LocalDate targetDate, String status,
                              String errorMessage, Instant updatedAt) {}
     public record OperationEventRow(long operationEventId, String eventType, String status,
@@ -52,7 +68,8 @@ public final class OperationsData {
             Instant nextSchedulerRun,
             OperationEventRow lastBackupRun,
             long groundedBriefCount,
-            long groundedSourceCount
+            long groundedSourceCount,
+            ContentInventory contentInventory
     ) {}
 
     public static final class EventInsert {

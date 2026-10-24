@@ -1,6 +1,79 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.triread.api.operations.OperationsMapper">
+    <select id="poolInventory" resultType="com.triread.api.operations.OperationsData$PoolInventory">
+        SELECT COUNT(*) FILTER (WHERE status = 'DRAFT' AND retired_at IS NULL) AS draft_count,
+               COUNT(*) FILTER (WHERE status = 'REVIEWED' AND retired_at IS NULL) AS reviewed_count,
+               COUNT(*) FILTER (WHERE status = 'PUBLISHED' AND retired_at IS NULL
+                                 AND available_on &lt;= #{today}) AS available_published_count,
+               COUNT(*) FILTER (WHERE status = 'PUBLISHED' AND retired_at IS NULL
+                                 AND available_on &gt; #{today}) AS scheduled_published_count,
+               COUNT(*) FILTER (WHERE status = 'PUBLISHED'
+                                 AND retired_at IS NOT NULL) AS retired_published_count,
+               COUNT(*) FILTER (WHERE status IN ('DRAFT', 'REVIEWED') AND retired_at IS NULL
+                                 AND available_on &lt;= #{today}
+                                 AND created_at &lt;= #{pendingBefore}) AS overdue_pending_count,
+               MIN(created_at) FILTER (WHERE status IN ('DRAFT', 'REVIEWED') AND retired_at IS NULL
+                                       AND available_on &lt;= #{today}
+                                       AND created_at &lt;= #{pendingBefore}) AS oldest_overdue_pending_at
+        FROM quiz_sets
+    </select>
+
+    <!-- Shared eligibility keeps the minimum and the bounded detail list consistent.
+         Already assigned, unstarted sets remain usable through today's assignment/carry-forward. -->
+    <sql id="userInventoryCte">
+        WITH available_pool AS (
+            SELECT id FROM quiz_sets
+            WHERE status = 'PUBLISHED' AND retired_at IS NULL AND available_on &lt;= #{today}
+        ), active_users AS (
+            SELECT u.id, u.login_name, u.display_name
+            FROM app_users u
+            WHERE u.enabled = TRUE
+              AND (u.last_login_at &gt;= #{activeSince} OR EXISTS (
+                  SELECT 1 FROM quiz_attempts recent
+                  WHERE recent.user_id = u.id AND recent.completed_at &gt;= #{activeSince}
+              ))
+        ), assignment_counts AS (
+            SELECT a.user_id,
+                   COUNT(pool.id) AS assigned_pool_count,
+                   COUNT(*) FILTER (WHERE qs.status = 'PUBLISHED' AND a.study_date &lt;= #{today}
+                                     AND NOT EXISTS (
+                                         SELECT 1 FROM quiz_attempts attempt
+                                         WHERE attempt.user_id = a.user_id
+                                           AND attempt.quiz_set_id = a.quiz_set_id
+                                     )) AS unstarted_set_count
+            FROM user_quiz_assignments a
+            JOIN active_users u ON u.id = a.user_id
+            JOIN quiz_sets qs ON qs.id = a.quiz_set_id
+            LEFT JOIN available_pool pool ON pool.id = qs.id
+            GROUP BY a.user_id
+        ), user_inventory AS (
+            SELECT u.id AS user_id, u.login_name, u.display_name,
+                   totals.pool_count - COALESCE(a.assigned_pool_count, 0) AS unassigned_set_count,
+                   COALESCE(a.unstarted_set_count, 0) AS unstarted_set_count,
+                   totals.pool_count - COALESCE(a.assigned_pool_count, 0)
+                       + COALESCE(a.unstarted_set_count, 0) AS remaining_set_count
+            FROM active_users u
+            CROSS JOIN (SELECT COUNT(*) AS pool_count FROM available_pool) totals
+            LEFT JOIN assignment_counts a ON a.user_id = u.id
+        )
+    </sql>
+
+    <select id="userInventoryStats" resultType="com.triread.api.operations.OperationsData$UserInventoryStats">
+        <include refid="userInventoryCte"/>
+        SELECT COUNT(*) AS active_user_count, MIN(remaining_set_count) AS minimum_remaining_sets,
+               COUNT(*) FILTER (WHERE remaining_set_count &lt; #{warningThreshold}) AS low_stock_user_count
+        FROM user_inventory
+    </select>
+
+    <select id="lowestStockUsers" resultType="com.triread.api.operations.OperationsData$UserInventory">
+        <include refid="userInventoryCte"/>
+        SELECT user_id, login_name, display_name, unassigned_set_count,
+               unstarted_set_count, remaining_set_count
+        FROM user_inventory
+        ORDER BY remaining_set_count, user_id
+        LIMIT #{limit}
+    </select>
     <select id="databaseSizeBytes" resultType="long">
         SELECT pg_database_size(current_database())
     </select>

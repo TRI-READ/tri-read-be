@@ -8,6 +8,14 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface OperationsMapper {
+    OperationsData.PoolInventory poolInventory(@Param("today") LocalDate today,
+                                               @Param("pendingBefore") Instant pendingBefore);
+    OperationsData.UserInventoryStats userInventoryStats(@Param("today") LocalDate today,
+                                                        @Param("activeSince") Instant activeSince,
+                                                        @Param("warningThreshold") int warningThreshold);
+    List<OperationsData.UserInventory> lowestStockUsers(@Param("today") LocalDate today,
+                                                       @Param("activeSince") Instant activeSince,
+                                                       @Param("limit") int limit);
     Long databaseSizeBytes();
     OperationsData.AiStats aiStats(@Param("from") Instant from, @Param("until") Instant until);
     List<OperationsData.ErrorCount> aiErrors(@Param("from") Instant from,

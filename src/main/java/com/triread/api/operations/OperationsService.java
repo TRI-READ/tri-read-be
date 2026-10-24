@@ -19,6 +19,7 @@ public class OperationsService {
     private static final int RECENT_ITEM_LIMIT = 10;
 
     private final OperationsMapper mapper;
+    private final ContentInventoryService contentInventoryService;
     private final LoginAttemptService loginAttemptService;
     private final AiApiUsageService apiUsageService;
     private final QuizGenerationProperties properties;
@@ -28,8 +29,10 @@ public class OperationsService {
     public OperationsService(OperationsMapper mapper, LoginAttemptService loginAttemptService,
                              AiApiUsageService apiUsageService,
                              QuizGenerationProperties properties, Clock clock,
-                             @Value("${app.version:dev}") String version) {
+                             @Value("${app.version:dev}") String version,
+                             ContentInventoryService contentInventoryService) {
         this.mapper = mapper;
+        this.contentInventoryService = contentInventoryService;
         this.loginAttemptService = loginAttemptService;
         this.apiUsageService = apiUsageService;
         this.properties = properties;
@@ -69,7 +72,7 @@ public class OperationsService {
                 recentFailures, recentAdminActions, lockedLoginAttempts,
                 lastSchedulerRun, nextRun(properties.getCron()),
                 lastBackup, mapper.countGroundedBriefs(),
-                mapper.countGroundedSources());
+                mapper.countGroundedSources(), contentInventoryService.inventory());
     }
 
     public long startEvent(String eventType, String message) {
