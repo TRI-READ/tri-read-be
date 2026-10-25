@@ -36,6 +36,11 @@ mybatis:
 app:
   version: ${APP_VERSION:dev}
   time-zone: Asia/Seoul
+  content-inventory:
+    active-window-days: ${CONTENT_INVENTORY_ACTIVE_WINDOW_DAYS:30}
+    warning-threshold: ${CONTENT_INVENTORY_WARNING_THRESHOLD:14}
+    critical-threshold: ${CONTENT_INVENTORY_CRITICAL_THRESHOLD:7}
+    review-wait-hours: ${CONTENT_INVENTORY_REVIEW_WAIT_HOURS:48}
   notifications:
     discord:
       enabled: ${DISCORD_NOTIFICATIONS_ENABLED:false}
