@@ -70,7 +70,7 @@ jobs:
         run: bash deploy/verify-backup.sh "/tmp/${{ steps.dump.outputs.name }}.enc"
 
       - name: Upload encrypted backup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.dump.outputs.name }}
           path: /tmp/${{ steps.dump.outputs.name }}.enc
